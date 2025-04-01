@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	jwt "github.com/golang-jwt/jwt/v5"
 )
@@ -17,12 +16,7 @@ import (
 const (
 	BearerSchema = "Bearer"
 
-	authHeaderPart                = 2
-	httpClientMaxIdleCon          = 10
-	httpClientIdleConnTimeout     = 30 * time.Second
-	httpClientTLSHandshakeTimeout = 30 * time.Second
-	jwksRefreshInterval           = 24 * time.Hour
-	defaultTimeout                = 60 * time.Second
+	authHeaderPart = 2
 )
 
 type JWKS struct {

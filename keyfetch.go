@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+const (
+	defaultHttpClientMaxIdleCon          = 10
+	defaultHttpClientIdleConnTimeout     = 30 * time.Second
+	defaultHttpClientTLSHandshakeTimeout = 30 * time.Second
+	defaultFetchInterval                 = 24 * time.Hour
+	defaultTimeout                       = 60 * time.Second
+)
+
 type JWKSFetcher struct {
 	wellKnowURL   string
 	jwks          *JWKS
@@ -19,27 +27,28 @@ type JWKSFetcher struct {
 }
 
 type JWKSFetcherOpts struct {
-	BaseURL       string
-	FetchInterval time.Duration
+	BaseURL                   string
+	FetchInterval             time.Duration
+	TLSHandshakeTimeout       time.Duration
+	Timeout                   time.Duration
+	HttpClientIdleConnTimeout time.Duration
+	HttpClientMaxIdleCon      int
 }
 
-func NewJWKSFetcher(opts JWKSFetcherOpts) (*JWKSFetcher, error) {
+func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
 	if opts.BaseURL == "" {
 		return nil, fmt.Errorf("base url is required")
 	}
 
-	if opts.FetchInterval == 0 {
-		opts.FetchInterval = 24 * time.Hour
-	}
+	setDefaults(opts)
 
-	// TODO: make timeouts customizable
 	httpClient := &http.Client{
 		Timeout: defaultTimeout,
 		Transport: &http.Transport{
-			MaxIdleConns:        httpClientMaxIdleCon,
-			IdleConnTimeout:     httpClientIdleConnTimeout,
+			MaxIdleConns:        opts.HttpClientMaxIdleCon,
+			IdleConnTimeout:     opts.HttpClientIdleConnTimeout,
 			DisableCompression:  true,
-			TLSHandshakeTimeout: httpClientTLSHandshakeTimeout,
+			TLSHandshakeTimeout: opts.TLSHandshakeTimeout,
 		},
 	}
 
@@ -130,4 +139,22 @@ func (f *JWKSFetcher) synchronizeKeys(ctx context.Context) error {
 	slog.DebugContext(ctx, "JWKS keys refreshed successfully")
 
 	return nil
+}
+
+func setDefaults(opts *JWKSFetcherOpts) {
+	if opts.FetchInterval == 0 {
+		opts.FetchInterval = defaultFetchInterval
+	}
+	if opts.TLSHandshakeTimeout == 0 {
+		opts.FetchInterval = defaultHttpClientTLSHandshakeTimeout
+	}
+	if opts.Timeout == 0 {
+		opts.Timeout = defaultTimeout
+	}
+	if opts.HttpClientMaxIdleCon == 0 {
+		opts.HttpClientMaxIdleCon = defaultHttpClientMaxIdleCon
+	}
+	if opts.HttpClientIdleConnTimeout == 0 {
+		opts.HttpClientIdleConnTimeout = defaultHttpClientIdleConnTimeout
+	}
 }

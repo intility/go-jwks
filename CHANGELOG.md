@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.1.0](https://github.com/intility/go-jwks/compare/v1.0.0...v1.1.0) (2025-04-01)
+
+
+### Features
+
+* allow for general oidc discovery documents ([9d667a0](https://github.com/intility/go-jwks/commit/9d667a06caf2b9ab301848f0f38e404bdfc94006))
+* make http client customizable ([b0e13ee](https://github.com/intility/go-jwks/commit/b0e13ee40be442c4107991b0b1fac201a45f43ee))
+
+
+### Bug Fixes
+
+* add check for int overflow ([af7eb78](https://github.com/intility/go-jwks/commit/af7eb7890564ecbed48883a685fcabaeee5a616a))
+* check for nil jwks ([40b08b8](https://github.com/intility/go-jwks/commit/40b08b8625392adfb6c4bc5e8208866094654790))
+* close resp body ([10bc307](https://github.com/intility/go-jwks/commit/10bc3070fa4935bee3b5e65c717c740ed9d6f554))
+* div bugfixes ([adc7dee](https://github.com/intility/go-jwks/commit/adc7dee1ec01689edd7e583c6da95334cfea9512))
+* set defaults correctly ([5db5c7e](https://github.com/intility/go-jwks/commit/5db5c7ef66c4a45bc0681cdd7722e45f18e76f74))
+
+
+### Performance Improvements
+
+* initialize keyfunc once ([68c0601](https://github.com/intility/go-jwks/commit/68c0601a9543646034235aec55c2e434a52db13b))
+
 ## 1.0.0 (2025-04-01)
 
 

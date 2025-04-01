@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0 (2025-04-01)
+
+
+### Features
+
+* initial commit ([07d3436](https://github.com/intility/go-jwks/commit/07d3436c46669a422dc6e5ddd79c65c801194690))
+
 ## [1.0.2](https://github.com/intility/go-jwks/compare/v1.0.1...v1.0.2) (2025-03-31)
 
 

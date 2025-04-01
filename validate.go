@@ -137,7 +137,7 @@ func parseKey(jwk *JSONWebKey) (interface{}, error) {
 
 			e := new(big.Int).SetBytes(eBytes)
 			if n.BitLen() == 0 || e.BitLen() == 0 {
-				return nil, fmt.Errorf("big inting failed")
+				return nil, fmt.Errorf("RSA modulus or exponent resulted in zero value")
 			}
 
 			// Check if e is to big for convert

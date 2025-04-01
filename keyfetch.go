@@ -164,6 +164,8 @@ func fetchJWKSURL(ctx context.Context, baseURL string, client *http.Client) (str
 		return "", fmt.Errorf("failed to request get OIDC discovery endpoint (%s): %w", discoveryURL, err)
 	}
 
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("OIDC discovery request to %s returned non 200 status: %w", discoveryURL, err)
 	}

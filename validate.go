@@ -9,20 +9,13 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	jwt "github.com/golang-jwt/jwt/v5"
 )
 
 const (
-	BearerSchema = "Bearer"
-
-	authHeaderPart                = 2
-	httpClientMaxIdleCon          = 10
-	httpClientIdleConnTimeout     = 30 * time.Second
-	httpClientTLSHandshakeTimeout = 30 * time.Second
-	jwksRefreshInterval           = 24 * time.Hour
-	defaultTimeout                = 60 * time.Second
+	BearerSchema   = "Bearer"
+	authHeaderPart = 2
 )
 
 type JWKS struct {
@@ -65,6 +58,8 @@ func NewJWTValidator(fetcher *JWKSFetcher, audiences []string, validMethods []st
 // The returned function takes in and returns a http.Handler.
 // The returned http.HandlerFunc is the actual middleware.
 func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
+	keyFunc := validator.createKeyFunc()
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -80,8 +75,6 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 			}
 
 			tokenStr := parts[1]
-
-			keyFunc := validator.createKeyFunc()
 
 			// Parse and validate token.
 			token, err := jwt.Parse(tokenStr, keyFunc, jwt.WithValidMethods(validator.validMethods))
@@ -144,7 +137,12 @@ func parseKey(jwk *JSONWebKey) (interface{}, error) {
 
 			e := new(big.Int).SetBytes(eBytes)
 			if n.BitLen() == 0 || e.BitLen() == 0 {
-				return nil, fmt.Errorf("big inting failed")
+				return nil, fmt.Errorf("RSA modulus or exponent resulted in zero value")
+			}
+
+			// Check if e is to big for convert
+			if !e.IsInt64() {
+				return nil, fmt.Errorf("RSA exponent 'e' is too big to fit in an int")
 			}
 
 			return &rsa.PublicKey{N: n, E: int(e.Int64())}, nil
@@ -173,6 +171,10 @@ func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
 		v.JWKSFetcher.mutex.RLock()
 		defer v.JWKSFetcher.mutex.RUnlock()
 
+		if v.JWKSFetcher.jwks == nil {
+			return nil, fmt.Errorf("no keys have been fetched (initial fetch pending or failed)")
+		}
+
 		// Check if any of the public keys IDs match the auth header kid.
 		// If match, parse and return RSA public key.
 		for _, key := range v.JWKSFetcher.jwks.Keys {
@@ -190,11 +192,4 @@ func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
 		}
 		return nil, fmt.Errorf("signing key not found")
 	}
-}
-
-func createDiscoveryURL(baseURL string) string {
-	baseURL = strings.TrimSuffix(baseURL, "/")
-	disoveryPath := "/discovery/v2.0/keys"
-
-	return baseURL + disoveryPath
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -16,7 +17,13 @@ const (
 	defaultHttpClientTLSHandshakeTimeout = 30 * time.Second
 	defaultFetchInterval                 = 24 * time.Hour
 	defaultTimeout                       = 60 * time.Second
+
+	oidcDiscoveryPath = "/.well-known/openid-configuration"
 )
+
+type discoveryDocument struct {
+	JwksURI string `json:"jwks_uri"`
+}
 
 type JWKSFetcher struct {
 	wellKnowURL   string
@@ -36,9 +43,6 @@ type JWKSFetcherOpts struct {
 }
 
 func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
-	if opts.BaseURL == "" {
-		return nil, fmt.Errorf("base url is required")
-	}
 
 	setDefaults(opts)
 
@@ -51,9 +55,13 @@ func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
 			TLSHandshakeTimeout: opts.TLSHandshakeTimeout,
 		},
 	}
+	jwksURL, err := fetchJWKSURL(context.Background(), opts.BaseURL, httpClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch JWKS URL")
+	}
 
 	return &JWKSFetcher{
-		wellKnowURL:   createDiscoveryURL(opts.BaseURL),
+		wellKnowURL:   jwksURL,
 		mutex:         &sync.RWMutex{},
 		jwks:          nil,
 		fetchInterval: opts.FetchInterval,
@@ -64,11 +72,6 @@ func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
 // Start synchronization of JWKS into in-memory store.
 func (f *JWKSFetcher) Start(ctx context.Context) {
 	go func() {
-		slog.Info("performing intitial fetch")
-		if err := f.synchronizeKeys(ctx); err != nil {
-			slog.Error("initial JWKS fetch failed", "error", err)
-		}
-
 		ticker := time.NewTicker(f.fetchInterval)
 		defer ticker.Stop()
 
@@ -89,6 +92,25 @@ func (f *JWKSFetcher) Start(ctx context.Context) {
 	}()
 }
 
+// Fetches the lastest keys and updates the in-memory store.
+func (f *JWKSFetcher) synchronizeKeys(ctx context.Context) error {
+	slog.DebugContext(ctx, "Refreshing JWKS keys")
+
+	newJWKS, err := f.fetchRemoteJWKS(ctx, f.wellKnowURL)
+	if err != nil {
+		return fmt.Errorf("failed to fetch remote keys: %w", err)
+	}
+
+	f.mutex.Lock()
+	f.jwks = &newJWKS
+	f.mutex.Unlock()
+
+	slog.DebugContext(ctx, "JWKS keys refreshed successfully")
+
+	return nil
+}
+
+// Executes the JWKS fetch request
 func (f *JWKSFetcher) fetchRemoteJWKS(ctx context.Context, jwksURL string) (JWKS, error) {
 	slog.DebugContext(ctx, "Starting fetchRemoteJWKS")
 
@@ -108,7 +130,9 @@ func (f *JWKSFetcher) fetchRemoteJWKS(ctx context.Context, jwksURL string) (JWKS
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		slog.ErrorContext(ctx, "received non 200 status from JWKS url", "url", jwksURL, "status code", resp.StatusCode)
+		errMsg := fmt.Sprintf("received non 200 status (%d) from JWKS url: %s", resp.StatusCode, jwksURL)
+		slog.ErrorContext(ctx, errMsg)
+		return JWKS{}, fmt.Errorf("%s", errMsg)
 	}
 
 	var jwks JWKS
@@ -124,21 +148,36 @@ func (f *JWKSFetcher) fetchRemoteJWKS(ctx context.Context, jwksURL string) (JWKS
 	return jwks, nil
 }
 
-func (f *JWKSFetcher) synchronizeKeys(ctx context.Context) error {
-	slog.DebugContext(ctx, "Refreshing JWKS keys")
+// Gets the JWKS URL from the OIDC discovery document.
+func fetchJWKSURL(ctx context.Context, baseURL string, client *http.Client) (string, error) {
+	if baseURL == "" {
+		return "", fmt.Errorf("base url can not be empty")
+	}
+	discoveryURL := strings.TrimSuffix(baseURL, "/") + oidcDiscoveryPath
 
-	newJWKS, err := f.fetchRemoteJWKS(ctx, f.wellKnowURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to fetch remote keys: %w", err)
+		return "", fmt.Errorf("failed to create OIDC discovery request: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to request get OIDC discovery endpoint (%s): %w", discoveryURL, err)
 	}
 
-	f.mutex.Lock()
-	f.jwks = &newJWKS
-	f.mutex.Unlock()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("OIDC discovery request to %s returned non 200 status: %w", discoveryURL, err)
+	}
 
-	slog.DebugContext(ctx, "JWKS keys refreshed successfully")
+	var discoveryDoc discoveryDocument
+	if err := json.NewDecoder(resp.Body).Decode(&discoveryDoc); err != nil {
+		return "", fmt.Errorf("failed to decode OIDC discovery JSON from %s: %w", discoveryURL, err)
+	}
 
-	return nil
+	if discoveryDoc.JwksURI == "" {
+		return "", fmt.Errorf("jwks_uri not found in discovery doc from %s", discoveryURL)
+	}
+
+	return discoveryDoc.JwksURI, nil
 }
 
 func setDefaults(opts *JWKSFetcherOpts) {

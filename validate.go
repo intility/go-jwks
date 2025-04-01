@@ -140,6 +140,11 @@ func parseKey(jwk *JSONWebKey) (interface{}, error) {
 				return nil, fmt.Errorf("big inting failed")
 			}
 
+			// Check if e is to big for convert
+			if !e.IsInt64() {
+				return nil, fmt.Errorf("RSA exponent 'e' is too big to fit in an int")
+			}
+
 			return &rsa.PublicKey{N: n, E: int(e.Int64())}, nil
 		} else {
 			return nil, fmt.Errorf("missing N and/or E param")

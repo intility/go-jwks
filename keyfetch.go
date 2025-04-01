@@ -75,7 +75,6 @@ func (f *JWKSFetcher) Start(ctx context.Context) {
 		defer ticker.Stop()
 
 		for {
-			slog.Info("fetching new keys")
 			if err := f.synchronizeKeys(ctx); err != nil {
 				slog.Error("failed to fetch remote keys", "error", err)
 			}
@@ -93,7 +92,7 @@ func (f *JWKSFetcher) Start(ctx context.Context) {
 
 // Fetches the lastest keys and updates the in-memory store.
 func (f *JWKSFetcher) synchronizeKeys(ctx context.Context) error {
-	slog.DebugContext(ctx, "Refreshing JWKS keys")
+	slog.Info("fetching new keys")
 
 	newJWKS, err := f.fetchRemoteJWKS(ctx, f.jwksURL)
 	if err != nil {

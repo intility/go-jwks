@@ -193,10 +193,3 @@ func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
 		return nil, fmt.Errorf("signing key not found")
 	}
 }
-
-func createDiscoveryURL(baseURL string) string {
-	baseURL = strings.TrimSuffix(baseURL, "/")
-	disoveryPath := "/discovery/v2.0/keys"
-
-	return baseURL + disoveryPath
-}

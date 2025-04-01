@@ -31,7 +31,7 @@ import (
 	"net/http"
 	"time"
 
-	jwtval "github.com/intility/go-jwks"
+	jwks "github.com/intility/go-jwks"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -42,14 +42,14 @@ func main() {
 
 	// Provide the base URL of your identity provider. The package will construct the discovery URL.
 	// Optionally set the refresh interval (defaults to 24 hours).
-	jwksOpts := jwtval.JWKSFetcherOpts{
+	jwksOpts := &jwks.JWKSFetcherOpts{
 		BaseURL: "https://login.microsoftonline.com/YOUR_TENANT_ID",
 		FetchInterval: 12 * time.Hour,
 	}
 
-	fetcher, err := jwtval.NewJWKSFetcher(jwksOpts)
+	fetcher, err := jwks.NewJWKSFetcher(jwksOpts)
 	if err != nil {
-		slog.Error("failed to create fetcher: %w", err)
+		slog.Error("failed to create fetcher", "error", err)
 	}
 
   // Start fetching JWKS
@@ -65,10 +65,10 @@ func main() {
 	}
 
 	// Create the JWT Validator instance
-	validator := jwtval.NewJWTValidator(fetcher, audiences, validMethods)
+	validator := jwks.NewJWTValidator(fetcher, audiences, validMethods)
 
 	// Create the HTTP Middleware
-	jwtMiddleware := jwtval.JWTMiddleware(validator)
+	jwtMiddleware := jwks.JWTMiddleware(validator)
 
 	mux := http.NewServeMux()
 

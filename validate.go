@@ -14,8 +14,7 @@ import (
 )
 
 const (
-	BearerSchema = "Bearer"
-
+	BearerSchema   = "Bearer"
 	authHeaderPart = 2
 )
 
@@ -166,6 +165,10 @@ func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
 		// Lock and read from jwks store.
 		v.JWKSFetcher.mutex.RLock()
 		defer v.JWKSFetcher.mutex.RUnlock()
+
+		if v.JWKSFetcher.jwks == nil {
+			return nil, fmt.Errorf("no keys have been fetched (initial fetch pending or failed)")
+		}
 
 		// Check if any of the public keys IDs match the auth header kid.
 		// If match, parse and return RSA public key.

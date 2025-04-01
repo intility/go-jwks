@@ -26,7 +26,7 @@ type discoveryDocument struct {
 }
 
 type JWKSFetcher struct {
-	wellKnowURL   string
+	jwksURL       string
 	jwks          *JWKS
 	mutex         *sync.RWMutex
 	fetchInterval time.Duration
@@ -51,7 +51,6 @@ func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
 		Transport: &http.Transport{
 			MaxIdleConns:        opts.HttpClientMaxIdleCon,
 			IdleConnTimeout:     opts.HttpClientIdleConnTimeout,
-			DisableCompression:  true,
 			TLSHandshakeTimeout: opts.TLSHandshakeTimeout,
 		},
 	}
@@ -61,7 +60,7 @@ func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
 	}
 
 	return &JWKSFetcher{
-		wellKnowURL:   jwksURL,
+		jwksURL:       jwksURL,
 		mutex:         &sync.RWMutex{},
 		jwks:          nil,
 		fetchInterval: opts.FetchInterval,
@@ -96,7 +95,7 @@ func (f *JWKSFetcher) Start(ctx context.Context) {
 func (f *JWKSFetcher) synchronizeKeys(ctx context.Context) error {
 	slog.DebugContext(ctx, "Refreshing JWKS keys")
 
-	newJWKS, err := f.fetchRemoteJWKS(ctx, f.wellKnowURL)
+	newJWKS, err := f.fetchRemoteJWKS(ctx, f.jwksURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch remote keys: %w", err)
 	}

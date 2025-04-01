@@ -69,7 +69,7 @@ func (f *JWKSFetcher) Start(ctx context.Context) {
 			slog.Error("initial JWKS fetch failed", "error", err)
 		}
 
-		ticker := time.NewTicker(24 * time.Hour)
+		ticker := time.NewTicker(f.fetchInterval)
 		defer ticker.Stop()
 
 		for {
@@ -146,7 +146,7 @@ func setDefaults(opts *JWKSFetcherOpts) {
 		opts.FetchInterval = defaultFetchInterval
 	}
 	if opts.TLSHandshakeTimeout == 0 {
-		opts.FetchInterval = defaultHttpClientTLSHandshakeTimeout
+		opts.TLSHandshakeTimeout = defaultHttpClientTLSHandshakeTimeout
 	}
 	if opts.Timeout == 0 {
 		opts.Timeout = defaultTimeout

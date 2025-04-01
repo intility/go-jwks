@@ -43,7 +43,6 @@ type JWKSFetcherOpts struct {
 }
 
 func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
-
 	setDefaults(opts)
 
 	httpClient := &http.Client{
@@ -108,7 +107,7 @@ func (f *JWKSFetcher) synchronizeKeys(ctx context.Context) error {
 	return nil
 }
 
-// Executes the JWKS fetch request
+// Executes the JWKS fetch request.
 func (f *JWKSFetcher) fetchRemoteJWKS(ctx context.Context, jwksURL string) (JWKS, error) {
 	slog.DebugContext(ctx, "Starting fetchRemoteJWKS")
 

@@ -58,6 +58,8 @@ func NewJWTValidator(fetcher *JWKSFetcher, audiences []string, validMethods []st
 // The returned function takes in and returns a http.Handler.
 // The returned http.HandlerFunc is the actual middleware.
 func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
+	keyFunc := validator.createKeyFunc()
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -73,8 +75,6 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 			}
 
 			tokenStr := parts[1]
-
-			keyFunc := validator.createKeyFunc()
 
 			// Parse and validate token.
 			token, err := jwt.Parse(tokenStr, keyFunc, jwt.WithValidMethods(validator.validMethods))

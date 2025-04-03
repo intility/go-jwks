@@ -65,11 +65,13 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 			authHeader := r.Header.Get("Authorization")
 
 			if authHeader == "" {
+				slog.ErrorContext(r.Context(), "received request with no auth header")
 				http.Error(w, "auth header missing", http.StatusUnauthorized)
 				return
 			}
 			parts := strings.SplitN(authHeader, " ", authHeaderPart)
 			if len(parts) != authHeaderPart || parts[0] != BearerSchema {
+				slog.ErrorContext(r.Context(), "received request with malformed auth header")
 				http.Error(w, "bad auth header format", http.StatusBadRequest)
 				return
 			}
@@ -81,7 +83,7 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 			if err != nil {
 				msg := "failed to parse jwt token"
 				http.Error(w, msg, http.StatusUnauthorized)
-				slog.Error(msg, "error", err)
+				slog.ErrorContext(r.Context(), msg, "error", err)
 				return
 			}
 
@@ -107,13 +109,13 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 					}
 				}
 				if !validAud {
-					slog.Error("token audience validation failed", "aud", claims["aud"])
+					slog.ErrorContext(r.Context(), "token audience validation failed", "aud", claims["aud"])
 					http.Error(w, "invalid token", http.StatusUnauthorized)
 					return
 				}
 				next.ServeHTTP(w, r)
 			} else {
-				slog.Warn("token claims parsed but invalid", "claims", claims, "valid", token.Valid)
+				slog.WarnContext(r.Context(), "token claims parsed but invalid", "claims", claims, "valid", token.Valid)
 			}
 		})
 	}

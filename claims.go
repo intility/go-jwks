@@ -21,7 +21,7 @@ type contextKey string
 
 const userClaimsKey contextKey = "userClaims"
 
-// extracts claim data from context.
+// extracts claims data from context returned by the jwt middleware.
 func ClaimsFromContext(ctx context.Context) (*UserClaims, error) {
 	claimsData := ctx.Value(userClaimsKey)
 	if claimsData == nil {

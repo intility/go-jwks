@@ -1,6 +1,7 @@
 package jwt
 
 import (
+	"context"
 	"crypto/rsa"
 	"encoding/base64"
 	"fmt"
@@ -78,45 +79,53 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 
 			tokenStr := parts[1]
 
+			claims := &UserClaims{}
+
 			// Parse and validate token.
-			token, err := jwt.Parse(tokenStr, keyFunc, jwt.WithValidMethods(validator.validMethods))
+			token, err := jwt.ParseWithClaims(tokenStr, claims, keyFunc, jwt.WithValidMethods(validator.validMethods))
 			if err != nil {
-				msg := "failed to parse jwt token"
+				msg := "failed to parse jwt token with claims"
 				http.Error(w, msg, http.StatusUnauthorized)
 				slog.ErrorContext(r.Context(), msg, "error", err)
 				return
 			}
 
-			if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-				validAud := false
-				// Check if aud exists
-				if audClaim, ok := claims["aud"]; ok {
-					// Single aud
-					if audStr, ok := claims["aud"].(string); ok {
-						if slices.Contains(validator.audiences, audStr) {
-							validAud = true
-						}
-						// multiple auds
-					} else if audSlice, ok := audClaim.([]interface{}); ok {
-						for _, audx := range audSlice {
-							if audStr, ok := audx.(string); ok {
-								if slices.Contains(validator.audiences, audStr) {
-									validAud = true
-									break
-								}
-							}
-						}
+			if !token.Valid {
+				msg := "token parsed but is invalid"
+				http.Error(w, msg, http.StatusUnauthorized)
+				slog.ErrorContext(r.Context(), msg)
+				return
+			}
+
+			// Check for valid audience
+			validAud := false
+			tokenAudience := claims.Audience
+
+			// Single aud
+			if len(tokenAudience) == 1 {
+				if slices.Contains(validator.audiences, tokenAudience[0]) {
+					validAud = true
+				}
+				// multiple auds
+			} else {
+				for _, aud := range tokenAudience {
+					if slices.Contains(validator.audiences, aud) {
+						validAud = true
+						break
 					}
 				}
-				if !validAud {
-					slog.ErrorContext(r.Context(), "token audience validation failed", "aud", claims["aud"])
-					http.Error(w, "invalid token", http.StatusUnauthorized)
-					return
-				}
-				next.ServeHTTP(w, r)
-			} else {
-				slog.WarnContext(r.Context(), "token claims parsed but invalid", "claims", claims, "valid", token.Valid)
 			}
+
+			if !validAud {
+				slog.ErrorContext(r.Context(), "token audience validation failed", "audiences", claims.Audience)
+				http.Error(w, "invalid token", http.StatusUnauthorized)
+				return
+			}
+
+			// Add claims to context.
+			ctx := context.WithValue(r.Context(), userClaimsKey, claims)
+
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

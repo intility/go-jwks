@@ -41,16 +41,6 @@ type JSONWebKey struct {
 	X5c []string `json:"x5c,omitempty"` // Can be used as fallback or primary source
 }
 
-// Custom claims struct for easier and type safe retrieval
-// of OIDC claims from context in handlers.
-type contextClaims struct {
-	Name     string `json:"name,omitempty"`
-	Email    string `json:"email,omitempty"`
-	Username string `json:"username,omitempty"`
-
-	jwt.RegisteredClaims
-}
-
 type JWTValidator struct {
 	JWKSFetcher  *JWKSFetcher
 	audiences    []string
@@ -89,7 +79,7 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 
 			tokenStr := parts[1]
 
-			claims := &contextClaims{}
+			claims := &UserClaims{}
 
 			// Parse and validate token.
 			token, err := jwt.ParseWithClaims(tokenStr, claims, keyFunc, jwt.WithValidMethods(validator.validMethods))
@@ -133,7 +123,7 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 			}
 
 			// Add claims to context.
-			ctx := context.WithValue(r.Context(), "userClaims", claims)
+			ctx := context.WithValue(r.Context(), userClaimsKey, claims)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

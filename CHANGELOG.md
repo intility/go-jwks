@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.0](https://github.com/intility/go-jwks/compare/v1.1.0...v1.2.0) (2025-04-23)
+
+
+### Features
+
+* add claims to context ([45ce10b](https://github.com/intility/go-jwks/commit/45ce10b5af630fe0e6ee7f33d694e5750a8ce8fd))
+* add func to extract claims from context ([40b33ea](https://github.com/intility/go-jwks/commit/40b33ea02bffe54e5d0717b53cb88a8b77f722c1))
+* add user claims to request context ([3b24fa6](https://github.com/intility/go-jwks/commit/3b24fa61f128d01a392228b0eb7d53170d5c2025))
+
+
+### Bug Fixes
+
+* add logging to middleware ([ce059aa](https://github.com/intility/go-jwks/commit/ce059aab4cc1c4e87964d59216961972548a50ad))
+* add logging to middleware ([be672c5](https://github.com/intility/go-jwks/commit/be672c5d54bf68acbab7fc9a328e9ae02b48f57d))
+
 ## [1.1.0](https://github.com/intility/go-jwks/compare/v1.0.0...v1.1.0) (2025-04-01)
 
 

@@ -28,10 +28,10 @@ func ClaimsFromContext(ctx context.Context) (*UserClaims, error) {
 		return nil, fmt.Errorf("no claims in context")
 	}
 
-	claims, ok := claimsData.(UserClaims)
+	claims, ok := claimsData.(*UserClaims)
 	if !ok {
 		return nil, fmt.Errorf("failed to assert claims data")
 	}
 
-	return &claims, nil
+	return claims, nil
 }

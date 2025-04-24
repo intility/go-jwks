@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/intility/go-jwks/compare/v1.2.0...v1.2.1) (2025-04-24)
+
+
+### Bug Fixes
+
+* assert claimsData to pointer ([#11](https://github.com/intility/go-jwks/issues/11)) ([7f4b760](https://github.com/intility/go-jwks/commit/7f4b760fb12bd7a11452bf46bbe56c9b645e511d))
+
 ## [1.2.0](https://github.com/intility/go-jwks/compare/v1.1.0...v1.2.0) (2025-04-23)
 
 

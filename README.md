@@ -1,4 +1,4 @@
-# Go JSON Fetcher and JWT Validator
+# Go JWKS Fetcher and JWT Validator
 
 A go package for fetching JSON Web Key Sets (JWKS) from an authroization server
 and validating JSON Web Tokens (JWTs) using these keys. It includes HTTP middleware for integration 

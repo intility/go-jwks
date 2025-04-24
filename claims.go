@@ -34,5 +34,4 @@ func ClaimsFromContext(ctx context.Context) (*UserClaims, error) {
 	}
 
 	return claims, nil
-
 }

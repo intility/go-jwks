@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ type JWKSFetcher struct {
 	mutex         *sync.RWMutex
 	fetchInterval time.Duration
 	httpClient    *http.Client
+	logger        *slog.Logger
 }
 
 type JWKSFetcherOpts struct {
@@ -40,6 +42,7 @@ type JWKSFetcherOpts struct {
 	Timeout                   time.Duration
 	HttpClientIdleConnTimeout time.Duration
 	HttpClientMaxIdleCon      int
+	DebugLog                  bool
 }
 
 func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
@@ -53,10 +56,20 @@ func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
 			TLSHandshakeTimeout: opts.TLSHandshakeTimeout,
 		},
 	}
+
 	jwksURL, err := fetchJWKSURL(context.Background(), opts.BaseURL, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch JWKS URL")
 	}
+
+	var logLevel slog.Level
+	if opts.DebugLog {
+		logLevel = slog.LevelDebug
+	} else {
+		logLevel = slog.LevelInfo
+	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
 
 	return &JWKSFetcher{
 		jwksURL:       jwksURL,
@@ -64,23 +77,25 @@ func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
 		jwks:          nil,
 		fetchInterval: opts.FetchInterval,
 		httpClient:    httpClient,
+		logger:        logger,
 	}, nil
 }
 
 // Start synchronization of JWKS into in-memory store.
 func (f *JWKSFetcher) Start(ctx context.Context) {
+	f.logger.DebugContext(ctx, "starting JWKS fetcher", "interval", f.fetchInterval)
 	go func() {
 		ticker := time.NewTicker(f.fetchInterval)
 		defer ticker.Stop()
 
 		for {
 			if err := f.synchronizeKeys(ctx); err != nil {
-				slog.Error("failed to fetch remote keys", "error", err)
+				f.logger.Error("failed to fetch remote keys", "error", err)
 			}
 
 			select {
 			case <-ctx.Done():
-				slog.Info("jwks sync stopped")
+				f.logger.InfoContext(ctx, "jwks sync stopped")
 				return
 			case <-ticker.C:
 				continue
@@ -91,7 +106,7 @@ func (f *JWKSFetcher) Start(ctx context.Context) {
 
 // Fetches the lastest keys and updates the in-memory store.
 func (f *JWKSFetcher) synchronizeKeys(ctx context.Context) error {
-	slog.Info("fetching new keys")
+	f.logger.DebugContext(ctx, "fetching new keys")
 
 	newJWKS, err := f.fetchRemoteJWKS(ctx, f.jwksURL)
 	if err != nil {
@@ -102,15 +117,13 @@ func (f *JWKSFetcher) synchronizeKeys(ctx context.Context) error {
 	f.jwks = &newJWKS
 	f.mutex.Unlock()
 
-	slog.DebugContext(ctx, "JWKS keys refreshed successfully")
+	f.logger.DebugContext(ctx, "JWKS keys refreshed successfully")
 
 	return nil
 }
 
 // Executes the JWKS fetch request.
 func (f *JWKSFetcher) fetchRemoteJWKS(ctx context.Context, jwksURL string) (JWKS, error) {
-	slog.DebugContext(ctx, "Starting fetchRemoteJWKS")
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
 	if err != nil {
 		return JWKS{}, fmt.Errorf("crafting request to %s failed with %w", jwksURL, err)
@@ -118,7 +131,6 @@ func (f *JWKSFetcher) fetchRemoteJWKS(ctx context.Context, jwksURL string) (JWKS
 
 	resp, err := f.httpClient.Do(req)
 	if err != nil {
-		slog.DebugContext(ctx, "failed request", "url", jwksURL, "error", err)
 		return JWKS{}, fmt.Errorf("request to %s failed with %w", jwksURL, err)
 	}
 
@@ -128,7 +140,6 @@ func (f *JWKSFetcher) fetchRemoteJWKS(ctx context.Context, jwksURL string) (JWKS
 
 	if resp.StatusCode != http.StatusOK {
 		errMsg := fmt.Sprintf("received non 200 status (%d) from JWKS url: %s", resp.StatusCode, jwksURL)
-		slog.ErrorContext(ctx, errMsg)
 		return JWKS{}, fmt.Errorf("%s", errMsg)
 	}
 
@@ -136,11 +147,8 @@ func (f *JWKSFetcher) fetchRemoteJWKS(ctx context.Context, jwksURL string) (JWKS
 
 	err = json.NewDecoder(resp.Body).Decode(&jwks)
 	if err != nil {
-		slog.DebugContext(ctx, "failed to decode json response from JWKS url", "error", err)
 		return JWKS{}, fmt.Errorf("failed to decode json response %w", err)
 	}
-
-	slog.DebugContext(ctx, "fetchRemoteJWKS done")
 
 	return jwks, nil
 }

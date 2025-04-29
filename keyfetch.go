@@ -33,7 +33,7 @@ type JWKSFetcher struct {
 	httpClient    *http.Client
 }
 
-// JWKSFetcherOpts holds the confifuration for the JWKSFetcher
+// JWKSFetcherOpts holds the confifuration for the JWKSFetcher.
 type JWKSFetcherOpts struct {
 	baseURL                   string
 	entraIDtenant             string
@@ -44,7 +44,7 @@ type JWKSFetcherOpts struct {
 	httpClientMaxIdleCon      int
 }
 
-// Option is a function that configures a JWKSFetcherOpts
+// Option is a function that configures a JWKSFetcherOpts.
 type Option func(*JWKSFetcherOpts) error
 
 // WithBaseURL sets the base url for fetching the auth server discovery document.

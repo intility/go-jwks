@@ -176,7 +176,7 @@ func NewJWKSFetcher(options ...Option) (*JWKSFetcher, error) {
 	}
 
 	var logLevel slog.Level
-	if opts.DebugLog {
+	if opts.debugLog {
 		logLevel = slog.LevelDebug
 	} else {
 		logLevel = slog.LevelInfo

@@ -33,27 +33,141 @@ type JWKSFetcher struct {
 	httpClient    *http.Client
 }
 
+// JWKSFetcherOpts holds the confifuration for the JWKSFetcher
 type JWKSFetcherOpts struct {
-	BaseURL                   string
-	FetchInterval             time.Duration
-	TLSHandshakeTimeout       time.Duration
-	Timeout                   time.Duration
-	HttpClientIdleConnTimeout time.Duration
-	HttpClientMaxIdleCon      int
+	baseURL                   string
+	entraIDtenant             string
+	fetchInterval             time.Duration
+	tlsHandshakeTimeout       time.Duration
+	timeout                   time.Duration
+	httpClientIdleConnTimeout time.Duration
+	httpClientMaxIdleCon      int
 }
 
-func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
-	setDefaults(opts)
+// Option is a function that configures a JWKSFetcherOpts
+type Option func(*JWKSFetcherOpts) error
+
+// WithBaseURL sets the base url for fetching the auth server discovery document.
+// Cannot by used together with WithEntraIDTenantID.
+func WithBaseURL(url string) Option {
+	return func(o *JWKSFetcherOpts) error {
+		if url == "" {
+			return fmt.Errorf("WithBaseURL: url cannot be empty")
+		}
+
+		if o.entraIDtenant != "" {
+			return fmt.Errorf("WithBaseURL: cannot set base URL when entraID tenant is specified")
+		}
+		o.baseURL = url
+		return nil
+	}
+}
+
+// WithEntraIDTenantID configures the fetcher for Entra ID using the tenant ID.
+// Constructs BaseURL automatically.
+// Cannot be used together with WithBaseURL.
+func WithEntraIDTenantID(tenantID string) Option {
+	return func(o *JWKSFetcherOpts) error {
+		if tenantID == "" {
+			return fmt.Errorf("WithEntraIDTenantID: tenant ID cannot be empty")
+		}
+
+		if o.baseURL != "" {
+			return fmt.Errorf("WithEntraIDTenantID: cannot set tenant ID when base URL is already specified")
+		}
+
+		o.baseURL = fmt.Sprintf("https://login.microsoftonline.com/%s", tenantID)
+		return nil
+	}
+}
+
+// WithFetchInterval sets the interval for refreshing the JWKS.
+func WithFetchInterval(d time.Duration) Option {
+	return func(o *JWKSFetcherOpts) error {
+		if d <= 0 {
+			return fmt.Errorf("WithFetchInterval: duration must be positive")
+		}
+		o.fetchInterval = d
+		return nil
+	}
+}
+
+// WithTimeout sets the general timeout for HTTP requests made by the fetcher.
+func WithTimeout(d time.Duration) Option {
+	return func(o *JWKSFetcherOpts) error {
+		if d <= 0 {
+			return fmt.Errorf("WithTimeout: duration must be positive")
+		}
+		o.timeout = d
+		return nil
+	}
+}
+
+// WithTLSHandshakeTimeout sets the timeout for the TLS handshake.
+func WithTLSHandshakeTimeout(d time.Duration) Option {
+	return func(o *JWKSFetcherOpts) error {
+		if d <= 0 {
+			return fmt.Errorf("WithTLSHandshakeTimeout: duration must be positive")
+		}
+		o.tlsHandshakeTimeout = d
+		return nil
+	}
+}
+
+// WithHTTPClientIdleConnTimeout sets the idle connection timeout for the fetcher.
+// A timeout of 0 means no timeout will occur.
+func WithHTTPClientIdleConnTimeout(d time.Duration) Option {
+	return func(o *JWKSFetcherOpts) error {
+		if d < 0 {
+			return fmt.Errorf("WithHTTPClientIdleConnTimeout: duration cannot be negative")
+		}
+		o.httpClientIdleConnTimeout = d
+		return nil
+	}
+}
+
+// WithHTTPClientMaxIdleConns sets the maximum number of idle connections for the fetcher.
+func WithHTTPClientMaxIdleConns(n int) Option {
+	return func(o *JWKSFetcherOpts) error {
+		if n < 0 {
+			return fmt.Errorf("WithHTTPClientMaxIdleConns: number cannot be negative")
+		}
+		o.httpClientMaxIdleCon = n
+		return nil
+	}
+}
+
+func NewJWKSFetcher(options ...Option) (*JWKSFetcher, error) {
+	// Set default fetcher opts
+	opts := &JWKSFetcherOpts{
+		fetchInterval:             defaultFetchInterval,
+		tlsHandshakeTimeout:       defaultHttpClientTLSHandshakeTimeout,
+		timeout:                   defaultTimeout,
+		httpClientIdleConnTimeout: defaultHttpClientIdleConnTimeout,
+		httpClientMaxIdleCon:      defaultHttpClientMaxIdleCon,
+	}
+
+	// Apply options set by user
+	for _, opt := range options {
+		err := opt(opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to construct JWKSFetcher: %w", err)
+		}
+	}
+
+	if opts.baseURL == "" {
+		return nil, fmt.Errorf("either WithBaseURL or WithEntraIDTenantID must be used")
+	}
 
 	httpClient := &http.Client{
 		Timeout: defaultTimeout,
 		Transport: &http.Transport{
-			MaxIdleConns:        opts.HttpClientMaxIdleCon,
-			IdleConnTimeout:     opts.HttpClientIdleConnTimeout,
-			TLSHandshakeTimeout: opts.TLSHandshakeTimeout,
+			MaxIdleConns:        opts.httpClientMaxIdleCon,
+			IdleConnTimeout:     opts.httpClientIdleConnTimeout,
+			TLSHandshakeTimeout: opts.tlsHandshakeTimeout,
 		},
 	}
-	jwksURL, err := fetchJWKSURL(context.Background(), opts.BaseURL, httpClient)
+	jwksURL, err := fetchJWKSURL(context.Background(), opts.baseURL, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch JWKS URL")
 	}
@@ -62,7 +176,7 @@ func NewJWKSFetcher(opts *JWKSFetcherOpts) (*JWKSFetcher, error) {
 		jwksURL:       jwksURL,
 		mutex:         &sync.RWMutex{},
 		jwks:          nil,
-		fetchInterval: opts.FetchInterval,
+		fetchInterval: opts.fetchInterval,
 		httpClient:    httpClient,
 	}, nil
 }
@@ -177,22 +291,4 @@ func fetchJWKSURL(ctx context.Context, baseURL string, client *http.Client) (str
 	}
 
 	return discoveryDoc.JwksURI, nil
-}
-
-func setDefaults(opts *JWKSFetcherOpts) {
-	if opts.FetchInterval == 0 {
-		opts.FetchInterval = defaultFetchInterval
-	}
-	if opts.TLSHandshakeTimeout == 0 {
-		opts.TLSHandshakeTimeout = defaultHttpClientTLSHandshakeTimeout
-	}
-	if opts.Timeout == 0 {
-		opts.Timeout = defaultTimeout
-	}
-	if opts.HttpClientMaxIdleCon == 0 {
-		opts.HttpClientMaxIdleCon = defaultHttpClientMaxIdleCon
-	}
-	if opts.HttpClientIdleConnTimeout == 0 {
-		opts.HttpClientIdleConnTimeout = defaultHttpClientIdleConnTimeout
-	}
 }

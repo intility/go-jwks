@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/intility/go-jwks/compare/v1.2.1...v1.3.0) (2025-04-28)
+
+
+### Features
+
+* add debug logging option to JWKSFetcher ([#14](https://github.com/intility/go-jwks/issues/14)) ([f549fad](https://github.com/intility/go-jwks/commit/f549fad6e947c86f8d1e8ccf17bb6f665abd343b))
+
 ## [1.2.1](https://github.com/intility/go-jwks/compare/v1.2.0...v1.2.1) (2025-04-24)
 
 

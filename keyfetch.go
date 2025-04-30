@@ -140,6 +140,14 @@ func WithHTTPClientMaxIdleConns(n int) Option {
 	}
 }
 
+// WithDebugLog enables debug logging.
+func WithDebugLog() Option {
+	return func(o *JWKSFetcherOpts) error {
+		o.debugLog = true
+		return nil
+	}
+}
+
 func NewJWKSFetcher(options ...Option) (*JWKSFetcher, error) {
 	// Set default fetcher opts
 	opts := &JWKSFetcherOpts{

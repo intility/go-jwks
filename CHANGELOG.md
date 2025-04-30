@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/intility/go-jwks/compare/v1.3.0...v1.4.0) (2025-04-30)
+
+
+### Features
+
+* functional options ([#16](https://github.com/intility/go-jwks/issues/16)) ([ca20f4e](https://github.com/intility/go-jwks/commit/ca20f4eaad9bee29c06ab15ebaff9d4f500e9ac8))
+
 ## [1.3.0](https://github.com/intility/go-jwks/compare/v1.2.1...v1.3.0) (2025-04-28)
 
 

@@ -41,14 +41,10 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() 
 
-	// Provide the base URL of your identity provider. The package will construct the discovery URL.
-	// Optionally set the refresh interval (defaults to 24 hours).
-	jwksOpts := &jwks.JWKSFetcherOpts{
-		BaseURL: "https://login.microsoftonline.com/YOUR_TENANT_ID",
-		FetchInterval: 12 * time.Hour,
-	}
-
-	fetcher, err := jwks.NewJWKSFetcher(jwksOpts)
+	// Set either EntraID tenant ID, or if not using EntraID set the base URL of your auth server.
+	// E.g https://cognito-idp.[region].amazonaws.com/[userPoolId]/
+	// Optionally set other parameters using functional options.
+	fetcher, err := jwks.NewJWKSFetcher(jwks.WithEntraIDTenantID("your-tenant-id"))
 	if err != nil {
 		slog.Error("failed to create fetcher", "error", err)
 	}
@@ -57,13 +53,10 @@ func main() {
 	fetcher.Start(ctx)
 
 	// Configure JWT Validator
-	audiences := []string{
-		"api://YOUR_API_CLIENT_ID", 
-	}
+	audiences := []string{"api://YOUR_API_CLIENT_ID"}
+
 	// Specify allowed signing algorithms
-	validMethods := []string{
-		jwt.SigningMethodRS256.Alg(), 
-	}
+	validMethods := []string{jwt.SigningMethodRS256.Alg()}
 
 	// Create the JWT Validator instance
 	validator := jwks.NewJWTValidator(fetcher, audiences, validMethods)

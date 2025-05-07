@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/intility/go-jwks/compare/v1.4.0...v1.5.0) (2025-05-07)
+
+
+### Features
+
+* take discovery endpoint url as input to newjwksfetcher ([#18](https://github.com/intility/go-jwks/issues/18)) ([01cd664](https://github.com/intility/go-jwks/commit/01cd664e5786908536c639d040db44ec7c352252))
+
 ## [1.4.0](https://github.com/intility/go-jwks/compare/v1.3.0...v1.4.0) (2025-04-30)
 
 

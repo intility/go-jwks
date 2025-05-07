@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/intility/go-jwks/compare/v1.5.0...v1.5.1) (2025-05-07)
+
+
+### Bug Fixes
+
+* use corrent discovery endpoint for entra id ([#20](https://github.com/intility/go-jwks/issues/20)) ([1330fa2](https://github.com/intility/go-jwks/commit/1330fa288fb5760219f1a0ad527b5e27d0cc71a5))
+
 ## [1.5.0](https://github.com/intility/go-jwks/compare/v1.4.0...v1.5.0) (2025-05-07)
 
 

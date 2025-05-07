@@ -17,8 +17,6 @@ const (
 	defaultHttpClientTLSHandshakeTimeout = 30 * time.Second
 	defaultFetchInterval                 = 24 * time.Hour
 	defaultTimeout                       = 60 * time.Second
-
-	oidcDiscoveryPath = "/.well-known/openid-configuration"
 )
 
 type discoveryDocument struct {
@@ -36,7 +34,6 @@ type JWKSFetcher struct {
 
 // JWKSFetcherOpts holds the confifuration for the JWKSFetcher.
 type JWKSFetcherOpts struct {
-	entraIDtenant             string
 	fetchInterval             time.Duration
 	tlsHandshakeTimeout       time.Duration
 	timeout                   time.Duration

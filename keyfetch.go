@@ -63,7 +63,7 @@ func (e EntraID) getDiscoveryEndpoint() (string, error) {
 		return "", fmt.Errorf("tenant ID must be set when using entra ID source")
 	}
 
-	return fmt.Sprintf("https://login.microsoftonline.com/%s/v2.0/well-known/openid-configuration", e.TenantID), nil
+	return fmt.Sprintf("https://login.microsoftonline.com/%s/v2.0/.well-known/openid-configuration", e.TenantID), nil
 }
 
 func (g Generic) getDiscoveryEndpoint() (string, error) {
@@ -182,7 +182,7 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 
 	jwksURL, err := fetchJWKSURL(context.Background(), discoveryURL, httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch JWKS URL")
+		return nil, fmt.Errorf("failed to fetch JWKS URL from discoveryURR '%s': %w", discoveryURL, err)
 	}
 
 	return &JWKSFetcher{

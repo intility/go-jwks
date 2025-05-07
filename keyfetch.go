@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"strings"
+	"net/url"
 	"sync"
 	"time"
 )
@@ -37,52 +36,54 @@ type JWKSFetcher struct {
 
 // JWKSFetcherOpts holds the confifuration for the JWKSFetcher.
 type JWKSFetcherOpts struct {
-	baseURL                   string
 	entraIDtenant             string
 	fetchInterval             time.Duration
 	tlsHandshakeTimeout       time.Duration
 	timeout                   time.Duration
 	httpClientIdleConnTimeout time.Duration
 	httpClientMaxIdleCon      int
-	debugLog                  bool
+	logger                    *slog.Logger
+}
+
+// Where the keyfetcher will fetch its public keys from.
+type keySource interface {
+	getDiscoveryEndpoint() (string, error)
+}
+
+// Provides configuration for getching keys from Microsoft EntraID.
+type EntraID struct {
+	TenantID string
+}
+
+// Provides configuration for fetching keys from a generic OIDC provider.
+// Specify a full discovery document URL like https://<domain>/v2.0/.well-known/openid-configuration.
+type Generic struct {
+	DiscoveryURL string
+}
+
+func (e EntraID) getDiscoveryEndpoint() (string, error) {
+	if e.TenantID == "" {
+		return "", fmt.Errorf("tenant ID must be set when using entra ID source")
+	}
+
+	return fmt.Sprintf("https://login.microsoftonline.com/%s/v2.0/well-known/openid-configuration", e.TenantID), nil
+}
+
+func (g Generic) getDiscoveryEndpoint() (string, error) {
+	if g.DiscoveryURL == "" {
+		return "", fmt.Errorf("discovery url can be not be empty")
+	}
+
+	_, err := url.ParseRequestURI(g.DiscoveryURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid DiscoveryURL: %w", err)
+	}
+
+	return g.DiscoveryURL, nil
 }
 
 // Option is a function that configures a JWKSFetcherOpts.
 type Option func(*JWKSFetcherOpts) error
-
-// WithBaseURL sets the base url for fetching the auth server discovery document.
-// Cannot by used together with WithEntraIDTenantID.
-func WithBaseURL(url string) Option {
-	return func(o *JWKSFetcherOpts) error {
-		if url == "" {
-			return fmt.Errorf("WithBaseURL: url cannot be empty")
-		}
-
-		if o.entraIDtenant != "" {
-			return fmt.Errorf("WithBaseURL: cannot set base URL when entraID tenant is specified")
-		}
-		o.baseURL = url
-		return nil
-	}
-}
-
-// WithEntraIDTenantID configures the fetcher for Entra ID using the tenant ID.
-// Constructs BaseURL automatically.
-// Cannot be used together with WithBaseURL.
-func WithEntraIDTenantID(tenantID string) Option {
-	return func(o *JWKSFetcherOpts) error {
-		if tenantID == "" {
-			return fmt.Errorf("WithEntraIDTenantID: tenant ID cannot be empty")
-		}
-
-		if o.baseURL != "" {
-			return fmt.Errorf("WithEntraIDTenantID: cannot set tenant ID when base URL is already specified")
-		}
-
-		o.baseURL = fmt.Sprintf("https://login.microsoftonline.com/%s", tenantID)
-		return nil
-	}
-}
 
 // WithFetchInterval sets the interval for refreshing the JWKS.
 func WithFetchInterval(d time.Duration) Option {
@@ -140,15 +141,16 @@ func WithHTTPClientMaxIdleConns(n int) Option {
 	}
 }
 
-// WithDebugLog enables debug logging.
-func WithDebugLog() Option {
+// WithDebugLog lets you override the standard logger.
+func WithLogger(logger *slog.Logger) Option {
 	return func(o *JWKSFetcherOpts) error {
-		o.debugLog = true
+		o.logger = logger
 		return nil
 	}
 }
 
-func NewJWKSFetcher(options ...Option) (*JWKSFetcher, error) {
+// NewJWKSFetcher creates a new JWKSFetcher from a keySource.
+func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 	// Set default fetcher opts
 	opts := &JWKSFetcherOpts{
 		fetchInterval:             defaultFetchInterval,
@@ -156,6 +158,7 @@ func NewJWKSFetcher(options ...Option) (*JWKSFetcher, error) {
 		timeout:                   defaultTimeout,
 		httpClientIdleConnTimeout: defaultHttpClientIdleConnTimeout,
 		httpClientMaxIdleCon:      defaultHttpClientMaxIdleCon,
+		logger:                    slog.Default(),
 	}
 
 	// Apply options set by user
@@ -166,10 +169,6 @@ func NewJWKSFetcher(options ...Option) (*JWKSFetcher, error) {
 		}
 	}
 
-	if opts.baseURL == "" {
-		return nil, fmt.Errorf("either WithBaseURL or WithEntraIDTenantID must be used")
-	}
-
 	httpClient := &http.Client{
 		Timeout: defaultTimeout,
 		Transport: &http.Transport{
@@ -178,19 +177,16 @@ func NewJWKSFetcher(options ...Option) (*JWKSFetcher, error) {
 			TLSHandshakeTimeout: opts.tlsHandshakeTimeout,
 		},
 	}
-	jwksURL, err := fetchJWKSURL(context.Background(), opts.baseURL, httpClient)
+
+	discoveryURL, err := source.getDiscoveryEndpoint()
+	if err != nil {
+		return nil, fmt.Errorf("failed to set discovery url: %w", err)
+	}
+
+	jwksURL, err := fetchJWKSURL(context.Background(), discoveryURL, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch JWKS URL")
 	}
-
-	var logLevel slog.Level
-	if opts.debugLog {
-		logLevel = slog.LevelDebug
-	} else {
-		logLevel = slog.LevelInfo
-	}
-
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
 
 	return &JWKSFetcher{
 		jwksURL:       jwksURL,
@@ -198,7 +194,7 @@ func NewJWKSFetcher(options ...Option) (*JWKSFetcher, error) {
 		jwks:          nil,
 		fetchInterval: opts.fetchInterval,
 		httpClient:    httpClient,
-		logger:        logger,
+		logger:        opts.logger,
 	}, nil
 }
 
@@ -275,11 +271,10 @@ func (f *JWKSFetcher) fetchRemoteJWKS(ctx context.Context, jwksURL string) (JWKS
 }
 
 // Gets the JWKS URL from the OIDC discovery document.
-func fetchJWKSURL(ctx context.Context, baseURL string, client *http.Client) (string, error) {
-	if baseURL == "" {
-		return "", fmt.Errorf("base url can not be empty")
+func fetchJWKSURL(ctx context.Context, discoveryURL string, client *http.Client) (string, error) {
+	if discoveryURL == "" {
+		return "", fmt.Errorf("discovery url can not be empty")
 	}
-	discoveryURL := strings.TrimSuffix(baseURL, "/") + oidcDiscoveryPath
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
 	if err != nil {

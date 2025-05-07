@@ -41,10 +41,10 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() 
 
-	// Set either EntraID tenant ID, or if not using EntraID set the base URL of your auth server.
-	// E.g https://cognito-idp.[region].amazonaws.com/[userPoolId]/
+	// The NewJWKSFetcher takes a keysource to fetch public keys.
+	// The keySource interface is satisfied by EntraID and Generic.
 	// Optionally set other parameters using functional options.
-	fetcher, err := jwks.NewJWKSFetcher(jwks.WithEntraIDTenantID("your-tenant-id"))
+	fetcher, err := jwks.NewJWKSFetcher(jwks.EntraID{TenantID: "your-tenant-id"})
 	if err != nil {
 		slog.Error("failed to create fetcher", "error", err)
 	}

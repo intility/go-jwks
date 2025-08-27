@@ -91,15 +91,15 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 			token, err := jwt.ParseWithClaims(tokenStr, claims, keyFunc, jwt.WithValidMethods(validator.validMethods))
 			if err != nil {
 				msg := "failed to parse jwt token with claims"
-				http.Error(w, msg, http.StatusUnauthorized)
 				slog.ErrorContext(r.Context(), msg, "error", err)
+				http.Error(w, msg, http.StatusUnauthorized)
 				return
 			}
 
 			if !token.Valid {
 				msg := "token parsed but is invalid"
-				http.Error(w, msg, http.StatusUnauthorized)
 				slog.ErrorContext(r.Context(), msg)
+				http.Error(w, msg, http.StatusUnauthorized)
 				return
 			}
 
@@ -132,15 +132,15 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 			iss, err := claims.GetIssuer()
 			if err != nil {
 				msg := "failed to get issuer from claim"
-				http.Error(w, msg, http.StatusUnauthorized)
 				slog.ErrorContext(r.Context(), msg, "error", err)
+				http.Error(w, msg, http.StatusUnauthorized)
 				return
 			}
 
 			if !slices.Contains(validator.validIssuer, iss) {
 				msg := "issuer not valid"
-				http.Error(w, msg, http.StatusUnauthorized)
 				slog.ErrorContext(r.Context(), msg)
+				http.Error(w, msg, http.StatusUnauthorized)
 				return
 			}
 

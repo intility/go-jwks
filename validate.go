@@ -45,14 +45,20 @@ type JWTValidator struct {
 	JWKSFetcher  *JWKSFetcher
 	audiences    []string
 	validMethods []string
+	validIssuer  []string
 }
 
-func NewJWTValidator(fetcher *JWKSFetcher, audiences []string, validMethods []string) *JWTValidator {
+func NewJWTValidator(fetcher *JWKSFetcher, audiences, validMethods, validIssuer []string) (*JWTValidator, error) {
+	if len(validIssuer) == 0 {
+		return nil, fmt.Errorf("issuer not configured")
+	}
+
 	return &JWTValidator{
 		JWKSFetcher:  fetcher,
 		audiences:    audiences,
 		validMethods: validMethods,
-	}
+		validIssuer:  validIssuer,
+	}, nil
 }
 
 // JWTMiddleware takes a JWTValidator and return a function.
@@ -122,6 +128,22 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 				return
 			}
 
+			// Check for valid issuer
+			iss, err := claims.GetIssuer()
+			if err != nil {
+				msg := "failed to get issuer from claim"
+				http.Error(w, msg, http.StatusUnauthorized)
+				slog.ErrorContext(r.Context(), msg, "error", err)
+				return
+			}
+
+			if !slices.Contains(validator.validIssuer, iss) {
+				msg := "issuer not valid"
+				http.Error(w, msg, http.StatusUnauthorized)
+				slog.ErrorContext(r.Context(), msg)
+				return
+			}
+
 			// Add claims to context.
 			ctx := context.WithValue(r.Context(), userClaimsKey, claims)
 
@@ -169,8 +191,8 @@ func parseKey(jwk *JSONWebKey) (interface{}, error) {
 	}
 }
 
-// Returns a key lookup function function that takes in a jwt token,
-// A KeyFunc return (interface{}, error) where the interface may be a single key or a verificationKeySet with many keys.
+// Returns a key lookup function function that takes in a jwt token
+// and returns the corresponding public key.
 func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
 	return func(token *jwt.Token) (interface{}, error) {
 		kid, ok := token.Header["kid"].(string)
@@ -187,7 +209,7 @@ func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
 		}
 
 		// Check if any of the public keys IDs match the auth header kid.
-		// If match, parse and return RSA public key.
+		// If match, parse and return corresponding public key.
 		for _, key := range v.JWKSFetcher.jwks.Keys {
 			if key.Kid == kid {
 				pubkey, err := parseKey(&key)

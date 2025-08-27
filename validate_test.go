@@ -26,7 +26,13 @@ func generateRSAKey() (*rsa.PrivateKey, error) {
 }
 
 // generateTestJWT creates a JWT for testing.
-func generateTestJWT(signingKey *rsa.PrivateKey, kid, audience string, expiry time.Time, method jwtpkg.SigningMethod) (string, error) {
+func generateTestJWT(signingKey *rsa.PrivateKey,
+	kid,
+	audience string,
+	expiry time.Time,
+	method jwtpkg.SigningMethod,
+	iss string,
+) (string, error) {
 	token := jwtpkg.New(method)
 	token.Header["kid"] = kid
 	claims := token.Claims.(jwtpkg.MapClaims)
@@ -34,6 +40,7 @@ func generateTestJWT(signingKey *rsa.PrivateKey, kid, audience string, expiry ti
 	claims["exp"] = expiry.Unix()
 	claims["iat"] = time.Now().Unix()
 	claims["nbf"] = time.Now().Unix()
+	claims["iss"] = iss
 
 	tokenString, err := token.SignedString(signingKey)
 	if err != nil {
@@ -83,7 +90,9 @@ func TestJWTMiddleware(t *testing.T) {
 
 	// Setup Validator.
 	audience := "api://my-test-api"
-	validator := NewJWTValidator(minimalFetcher, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name})
+	issuer := "https://auth.example.com"
+	validator, err := NewJWTValidator(minimalFetcher, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name}, []string{issuer})
+	assert.NoError(t, err, "failed to create validator")
 
 	// Setup Middleware
 	jwtMiddleware := JWTMiddleware(validator)
@@ -98,7 +107,7 @@ func TestJWTMiddleware(t *testing.T) {
 	// --- Test Cases ---
 	t.Run("Valid JWT", func(t *testing.T) {
 		// Generate a valid JWT token to be used as auth header.
-		validToken, err := generateTestJWT(signingKey, kid, audience, time.Now().Add(time.Hour), jwtpkg.SigningMethodRS256)
+		validToken, err := generateTestJWT(signingKey, kid, audience, time.Now().Add(time.Hour), jwtpkg.SigningMethodRS256, issuer)
 		assert.NoError(t, err)
 
 		req := httptest.NewRequest("GET", "/protected", nil)
@@ -113,7 +122,7 @@ func TestJWTMiddleware(t *testing.T) {
 
 	t.Run("Invalid JWT - Bad Signature", func(t *testing.T) {
 		// Generate a token signed with the WRONG key, but using the correct kid
-		invalidToken, err := generateTestJWT(invalidSigningKey, kid, audience, time.Now().Add(time.Hour), jwtpkg.SigningMethodRS256)
+		invalidToken, err := generateTestJWT(invalidSigningKey, kid, audience, time.Now().Add(time.Hour), jwtpkg.SigningMethodRS256, issuer)
 		assert.NoError(t, err)
 
 		req := httptest.NewRequest("GET", "/protected", nil)
@@ -127,7 +136,7 @@ func TestJWTMiddleware(t *testing.T) {
 	})
 
 	t.Run("Invalid JWT - Wrong Audience", func(t *testing.T) {
-		wrongAudToken, err := generateTestJWT(signingKey, kid, "api://wrong-audience", time.Now().Add(time.Hour), jwtpkg.SigningMethodRS256)
+		wrongAudToken, err := generateTestJWT(signingKey, kid, "api://wrong-audience", time.Now().Add(time.Hour), jwtpkg.SigningMethodRS256, issuer)
 		assert.NoError(t, err)
 
 		req := httptest.NewRequest("GET", "/protected", nil)
@@ -142,7 +151,7 @@ func TestJWTMiddleware(t *testing.T) {
 
 	t.Run("Invalid JWT - Expired", func(t *testing.T) {
 		// Generate an expired token
-		expiredToken, err := generateTestJWT(signingKey, kid, audience, time.Now().Add(-time.Hour), jwtpkg.SigningMethodRS256) // Expired 1 hour ago
+		expiredToken, err := generateTestJWT(signingKey, kid, audience, time.Now().Add(-time.Hour), jwtpkg.SigningMethodRS256, issuer) // Expired 1 hour ago
 		assert.NoError(t, err)
 
 		req := httptest.NewRequest("GET", "/protected", nil)
@@ -153,5 +162,21 @@ func TestJWTMiddleware(t *testing.T) {
 
 		assert.Equal(t, http.StatusUnauthorized, recorder.Code, "Expected status Unauthorized for expired token")
 		assert.Contains(t, recorder.Body.String(), "failed to parse jwt token", "Expected parsing error message for expired token") // jwt-go includes expiry check in Parse
+	})
+
+	t.Run("Invalid issuer", func(t *testing.T) {
+		// Generate a valid JWT token to be used as auth header.
+		invalidIss := "https://auth.wrong.com"
+		validToken, err := generateTestJWT(signingKey, kid, audience, time.Now().Add(time.Hour), jwtpkg.SigningMethodRS256, invalidIss)
+		assert.NoError(t, err)
+
+		req := httptest.NewRequest("GET", "/protected", nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", validToken))
+		recorder := httptest.NewRecorder()
+
+		testHandler.ServeHTTP(recorder, req)
+
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code, "Expected status Unauthorized for valid token")
+		assert.Contains(t, recorder.Body.String(), "issuer not valid", "Expected 'issuer not valid' body for invalid issuer")
 	})
 }

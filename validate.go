@@ -45,14 +45,20 @@ type JWTValidator struct {
 	JWKSFetcher  *JWKSFetcher
 	audiences    []string
 	validMethods []string
+	validIssuer  string
 }
 
-func NewJWTValidator(fetcher *JWKSFetcher, audiences []string, validMethods []string) *JWTValidator {
+func NewJWTValidator(fetcher *JWKSFetcher, validIssuer string, audiences, validMethods []string) (*JWTValidator, error) {
+	if len(validIssuer) == 0 {
+		return nil, fmt.Errorf("issuer not configured")
+	}
+
 	return &JWTValidator{
 		JWKSFetcher:  fetcher,
 		audiences:    audiences,
 		validMethods: validMethods,
-	}
+		validIssuer:  validIssuer,
+	}, nil
 }
 
 // JWTMiddleware takes a JWTValidator and return a function.
@@ -82,18 +88,20 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 			claims := &UserClaims{}
 
 			// Parse and validate token.
-			token, err := jwt.ParseWithClaims(tokenStr, claims, keyFunc, jwt.WithValidMethods(validator.validMethods))
+			token, err := jwt.ParseWithClaims(tokenStr, claims, keyFunc,
+				jwt.WithValidMethods(validator.validMethods),
+				jwt.WithIssuer(validator.validIssuer))
 			if err != nil {
 				msg := "failed to parse jwt token with claims"
-				http.Error(w, msg, http.StatusUnauthorized)
 				slog.ErrorContext(r.Context(), msg, "error", err)
+				http.Error(w, msg, http.StatusUnauthorized)
 				return
 			}
 
 			if !token.Valid {
 				msg := "token parsed but is invalid"
-				http.Error(w, msg, http.StatusUnauthorized)
 				slog.ErrorContext(r.Context(), msg)
+				http.Error(w, msg, http.StatusUnauthorized)
 				return
 			}
 
@@ -130,7 +138,7 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 	}
 }
 
-// Parse JWK. Attempt both RSA and EC parsing. Return the public key.
+// Parse JWK. Attempt both RSA and EC parsing. Return the constructed public key.
 func parseKey(jwk *JSONWebKey) (interface{}, error) {
 	switch jwk.Kty {
 	case "RSA":
@@ -169,8 +177,9 @@ func parseKey(jwk *JSONWebKey) (interface{}, error) {
 	}
 }
 
-// Returns a key lookup function function that takes in a jwt token,
-// A KeyFunc return (interface{}, error) where the interface may be a single key or a verificationKeySet with many keys.
+// Returns a key lookup function function that takes in a jwt token
+// and returns the corresponding public key if a matching key id is found in the store.
+// Also validates that the key is not an encryption key.
 func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
 	return func(token *jwt.Token) (interface{}, error) {
 		kid, ok := token.Header["kid"].(string)
@@ -187,9 +196,16 @@ func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
 		}
 
 		// Check if any of the public keys IDs match the auth header kid.
-		// If match, parse and return RSA public key.
+		// If match, parse and return corresponding public key.
 		for _, key := range v.JWKSFetcher.jwks.Keys {
 			if key.Kid == kid {
+				// Validate key usage - only allow keys with use:"sig" or no use specified
+				// Reject keys explicitly marked for encryption only (use:"enc")
+				if key.Use != "" && key.Use != "sig" {
+					slog.Error("key usage validation failed", "kid", kid, "use", key.Use)
+					return nil, fmt.Errorf("key %s has invalid use '%s' for signature verification", kid, key.Use)
+				}
+
 				pubkey, err := parseKey(&key)
 				if err != nil {
 					slog.Error("failed to parse public key from JWK", "error", err)

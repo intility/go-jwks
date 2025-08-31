@@ -179,4 +179,98 @@ func TestJWTMiddleware(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, recorder.Code, "Expected status Unauthorized for valid token")
 		assert.Contains(t, recorder.Body.String(), "failed to parse jwt token with claims", "Expected 'failed to parse jwt token with claims' for invalid issuer")
 	})
+
+	// Key usage validation tests
+	t.Run("Reject encryption key", func(t *testing.T) {
+		// Setup fetcher with an encryption key (use:"enc")
+		encKeyFetcher := &JWKSFetcher{
+			jwks: &JWKS{
+				Keys: []JSONWebKey{
+					{
+						Kid: kid,
+						Kty: "RSA",
+						Use: "enc", // Encryption key - should be rejected for signing
+						E:   eBase64URL,
+						N:   nBase64URL,
+					},
+				},
+			},
+			mutex: &sync.RWMutex{},
+		}
+
+		encValidator, err := NewJWTValidator(encKeyFetcher, issuer, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name})
+		assert.NoError(t, err, "failed to create validator with encryption key")
+
+		encMiddleware := JWTMiddleware(encValidator)
+		encHandler := encMiddleware(nextHandler)
+
+		// Generate a valid JWT token
+		validToken, err := generateTestJWT(signingKey, kid, audience, time.Now().Add(time.Hour), jwtpkg.SigningMethodRS256, issuer)
+		assert.NoError(t, err)
+
+		req := httptest.NewRequest("GET", "/protected", nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", validToken))
+		recorder := httptest.NewRecorder()
+
+		encHandler.ServeHTTP(recorder, req)
+
+		// Should fail because the key is marked for encryption only
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code, "Expected status Unauthorized for encryption key")
+		assert.Contains(t, recorder.Body.String(), "failed to parse jwt token", "Expected parsing error for encryption key")
+	})
+
+	t.Run("Accept signature key", func(t *testing.T) {
+		// Setup fetcher with a signature key (use:"sig")
+		sigKeyFetcher := &JWKSFetcher{
+			jwks: &JWKS{
+				Keys: []JSONWebKey{
+					{
+						Kid: kid,
+						Kty: "RSA",
+						Use: "sig", // Signature key - should be accepted
+						E:   eBase64URL,
+						N:   nBase64URL,
+					},
+				},
+			},
+			mutex: &sync.RWMutex{},
+		}
+
+		sigValidator, err := NewJWTValidator(sigKeyFetcher, issuer, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name})
+		assert.NoError(t, err, "failed to create validator with signature key")
+
+		sigMiddleware := JWTMiddleware(sigValidator)
+		sigHandler := sigMiddleware(nextHandler)
+
+		// Generate a valid JWT token
+		validToken, err := generateTestJWT(signingKey, kid, audience, time.Now().Add(time.Hour), jwtpkg.SigningMethodRS256, issuer)
+		assert.NoError(t, err)
+
+		req := httptest.NewRequest("GET", "/protected", nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", validToken))
+		recorder := httptest.NewRecorder()
+
+		sigHandler.ServeHTTP(recorder, req)
+
+		// Should succeed because the key is marked for signatures
+		assert.Equal(t, http.StatusOK, recorder.Code, "Expected status OK for signature key")
+		assert.Equal(t, "OK", recorder.Body.String(), "Expected 'OK' body for signature key")
+	})
+
+	t.Run("Accept key without use field", func(t *testing.T) {
+		// The original staticJWKS doesn't have a Use field, so it tests this case
+		// Generate a valid JWT token
+		validToken, err := generateTestJWT(signingKey, kid, audience, time.Now().Add(time.Hour), jwtpkg.SigningMethodRS256, issuer)
+		assert.NoError(t, err)
+
+		req := httptest.NewRequest("GET", "/protected", nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", validToken))
+		recorder := httptest.NewRecorder()
+
+		testHandler.ServeHTTP(recorder, req)
+
+		// Should succeed because keys without use field can be used for any purpose
+		assert.Equal(t, http.StatusOK, recorder.Code, "Expected status OK for key without use field")
+		assert.Equal(t, "OK", recorder.Body.String(), "Expected 'OK' body for key without use field")
+	})
 }

@@ -91,7 +91,7 @@ func TestJWTMiddleware(t *testing.T) {
 	// Setup Validator.
 	audience := "api://my-test-api"
 	issuer := "https://auth.example.com"
-	validator, err := NewJWTValidator(minimalFetcher, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name}, []string{issuer})
+	validator, err := NewJWTValidator(minimalFetcher, issuer, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name})
 	assert.NoError(t, err, "failed to create validator")
 
 	// Setup Middleware
@@ -177,6 +177,6 @@ func TestJWTMiddleware(t *testing.T) {
 		testHandler.ServeHTTP(recorder, req)
 
 		assert.Equal(t, http.StatusUnauthorized, recorder.Code, "Expected status Unauthorized for valid token")
-		assert.Contains(t, recorder.Body.String(), "issuer not valid", "Expected 'issuer not valid' body for invalid issuer")
+		assert.Contains(t, recorder.Body.String(), "failed to parse jwt token with claims", "Expected 'failed to parse jwt token with claims' for invalid issuer")
 	})
 }

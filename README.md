@@ -11,7 +11,7 @@ with web services.
     *   Verifies the JWT signature using the public key corresponding to the `kid` (Key ID) in the token header.
     *   Validates the `alg` (algorithm) used for signing against a configurable list.
     *   Validates the `aud` (audience) claim against a configurable list of allowed audiences.
-    *   Does not validate `iss` (issuer) or `use`.
+    *   Validates the `iss` (issuer) against the configured issuer. 
 *   **HTTP Middleware:** Provides standard Go `http.Handler` middleware to protect endpoints.
 *   **RSA Support:** Currently supports JWTs signed with RSA algorithms. 
 
@@ -58,8 +58,11 @@ func main() {
 	// Specify allowed signing algorithms
 	validMethods := []string{jwt.SigningMethodRS256.Alg()}
 
+	// Specify you issuer
+	issuer := "https://auth.example.com"
+
 	// Create the JWT Validator instance
-	validator := jwks.NewJWTValidator(fetcher, audiences, validMethods)
+	validator := jwks.NewJWTValidator(fetcher, issuer, audiences, validMethods)
 
 	// Create the HTTP Middleware
 	jwtMiddleware := jwks.JWTMiddleware(validator)

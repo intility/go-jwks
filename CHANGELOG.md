@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/intility/go-jwks/compare/v1.5.1...v1.6.0) (2025-08-31)
+
+
+### Features
+
+* add issuer validation ([#23](https://github.com/intility/go-jwks/issues/23)) ([8c50d59](https://github.com/intility/go-jwks/commit/8c50d59a39ec5a201739839bb5ff09597af0b28b))
+
 ## [1.5.1](https://github.com/intility/go-jwks/compare/v1.5.0...v1.5.1) (2025-05-07)
 
 

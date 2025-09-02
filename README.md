@@ -49,8 +49,11 @@ func main() {
 		slog.Error("failed to create fetcher", "error", err)
 	}
 
-  // Start fetching JWKS
-	fetcher.Start(ctx)
+  // Start fetching JWKS (performs initial fetch synchronously)
+	if err := fetcher.Start(ctx); err != nil {
+		slog.Error("failed to start JWKS fetcher", "error", err)
+		return
+	}
 
 	// Configure JWT Validator
 	audiences := []string{"api://YOUR_API_CLIENT_ID"}

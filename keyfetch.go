@@ -238,7 +238,7 @@ func validateHost(urlStr string, allowedHosts []string, urlType string) error {
 
 	// Get hostname without port for comparison
 	hostname := parsed.Hostname()
-	
+
 	for _, allowed := range allowedHosts {
 		if hostname == allowed {
 			return nil

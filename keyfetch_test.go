@@ -503,7 +503,7 @@ func TestJWKSHostValidation(t *testing.T) {
 
 		// Parse server URL to get hostname
 		parsedURL, _ := url.Parse(server.URL)
-		
+
 		// Create fetcher with host restrictions allowing test server
 		fetcher, err := NewJWKSFetcher(
 			Generic{DiscoveryURL: server.URL + "/.well-known/openid-configuration"},
@@ -519,10 +519,10 @@ func TestJWKSHostValidation(t *testing.T) {
 		opts := &JWKSFetcherOpts{}
 		err := WithMicrosoftHosts()(opts)
 		require.NoError(t, err)
-		
+
 		expectedHosts := []string{
 			"login.microsoftonline.com",
-			"login.microsoft.com", 
+			"login.microsoft.com",
 			"login.windows.net",
 			"sts.windows.net",
 		}

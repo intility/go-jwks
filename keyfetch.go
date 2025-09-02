@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync"
 	"time"
 )
@@ -239,10 +240,8 @@ func validateHost(urlStr string, allowedHosts []string, urlType string) error {
 	// Get hostname without port for comparison
 	hostname := parsed.Hostname()
 
-	for _, allowed := range allowedHosts {
-		if hostname == allowed {
-			return nil
-		}
+	if slices.Contains(allowedHosts, hostname) {
+		return nil
 	}
 
 	return fmt.Errorf("%s host '%s' is not in the allowed hosts list", urlType, hostname)

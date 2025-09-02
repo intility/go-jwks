@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/intility/go-jwks/compare/v1.6.0...v1.7.0) (2025-09-02)
+
+
+### Features
+
+* add checks to jwks response ([#26](https://github.com/intility/go-jwks/issues/26)) ([68f3159](https://github.com/intility/go-jwks/commit/68f31596952a1a3e1072c139f0b7b06e9e539b69))
+
 ## [1.6.0](https://github.com/intility/go-jwks/compare/v1.5.1...v1.6.0) (2025-08-31)
 
 

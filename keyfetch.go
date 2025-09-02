@@ -2,6 +2,7 @@ package jwt
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -45,8 +46,10 @@ type JWKSFetcherOpts struct {
 	httpClientIdleConnTimeout time.Duration
 	httpClientMaxIdleCon      int
 	logger                    *slog.Logger
-	maxResponseSize           int64 // Maximum size of JWKS response in bytes
-	maxKeysCount              int   // Maximum number of keys allowed in JWKS
+	maxResponseSize           int64       // Maximum size of JWKS response in bytes
+	maxKeysCount              int         // Maximum number of keys allowed in JWKS
+	tlsConfig                 *tls.Config // TLS configuration for HTTPS connections
+	requireHTTPS              bool        // Require HTTPS for JWKS URLs (true by default for security)
 }
 
 // Where the keyfetcher will fetch its public keys from.
@@ -65,6 +68,16 @@ type Generic struct {
 	DiscoveryURL string
 }
 
+// defaultTLSConfig returns a secure TLS configuration with modern standards.
+func defaultTLSConfig() *tls.Config {
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS12, // Require TLS 1.2 minimum
+		InsecureSkipVerify: false,            // Always verify certificates
+		// Cipher suites intentionally not set - Go's defaults are secure and
+		// automatically updated with each release to use the best available options
+	}
+}
+
 // NewJWKSFetcher creates a new JWKSFetcher from a keySource.
 func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 	// Set default fetcher opts
@@ -77,6 +90,8 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 		logger:                    slog.Default(),
 		maxResponseSize:           defaultMaxResponseSize,
 		maxKeysCount:              defaultMaxKeysCount,
+		tlsConfig:                 defaultTLSConfig(), // Use secure defaults
+		requireHTTPS:              true,               // Require HTTPS by default for security
 	}
 
 	// Apply options set by user
@@ -93,6 +108,7 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 			MaxIdleConns:        opts.httpClientMaxIdleCon,
 			IdleConnTimeout:     opts.httpClientIdleConnTimeout,
 			TLSHandshakeTimeout: opts.tlsHandshakeTimeout,
+			TLSClientConfig:     opts.tlsConfig,
 		},
 	}
 
@@ -101,7 +117,7 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 		return nil, fmt.Errorf("failed to set discovery url: %w", err)
 	}
 
-	jwksURL, err := fetchJWKSURL(context.Background(), discoveryURL, httpClient)
+	jwksURL, err := fetchJWKSURL(context.Background(), discoveryURL, httpClient, opts.requireHTTPS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch JWKS URL from discoveryURR '%s': %w", discoveryURL, err)
 	}
@@ -208,9 +224,20 @@ func (f *JWKSFetcher) fetchRemoteJWKS(ctx context.Context, jwksURL string) (JWKS
 }
 
 // Gets the JWKS URL from the OIDC discovery document.
-func fetchJWKSURL(ctx context.Context, discoveryURL string, client *http.Client) (string, error) {
+func fetchJWKSURL(ctx context.Context, discoveryURL string, client *http.Client, requireHTTPS bool) (string, error) {
 	if discoveryURL == "" {
 		return "", fmt.Errorf("discovery url can not be empty")
+	}
+
+	// Validate discovery URL uses HTTPS if required
+	if requireHTTPS {
+		discoveryParsed, err := url.Parse(discoveryURL)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse discovery URL: %w", err)
+		}
+		if discoveryParsed.Scheme != "https" {
+			return "", fmt.Errorf("discovery URL must use HTTPS, got scheme: %s (use WithRequireHTTPS(false) to allow HTTP in secure environments)", discoveryParsed.Scheme)
+		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
@@ -237,6 +264,17 @@ func fetchJWKSURL(ctx context.Context, discoveryURL string, client *http.Client)
 		return "", fmt.Errorf("jwks_uri not found in discovery doc from %s", discoveryURL)
 	}
 
+	// Validate JWKS URL uses HTTPS if required
+	if requireHTTPS {
+		jwksParsed, err := url.Parse(discoveryDoc.JwksURI)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse JWKS URL from discovery document: %w", err)
+		}
+		if jwksParsed.Scheme != "https" {
+			return "", fmt.Errorf("JWKS URL must use HTTPS for security, got: %s (use WithRequireHTTPS(false) to allow HTTP in secure environments)", discoveryDoc.JwksURI)
+		}
+	}
+
 	return discoveryDoc.JwksURI, nil
 }
 
@@ -253,11 +291,13 @@ func (g Generic) getDiscoveryEndpoint() (string, error) {
 		return "", fmt.Errorf("discovery url cannot be empty")
 	}
 
+	// Validate it's a valid URL
 	_, err := url.ParseRequestURI(g.DiscoveryURL)
 	if err != nil {
 		return "", fmt.Errorf("invalid DiscoveryURL: %w", err)
 	}
 
+	// HTTPS validation is now done in fetchJWKSURL based on requireHTTPS option
 	return g.DiscoveryURL, nil
 }
 
@@ -348,6 +388,30 @@ func WithMaxKeysCount(count int) Option {
 			return fmt.Errorf("WithMaxKeysCount: count must be positive")
 		}
 		o.maxKeysCount = count
+		return nil
+	}
+}
+
+// WithTLSConfig sets a custom TLS configuration for JWKS fetching.
+// If not set, a secure default configuration with TLS 1.2+ and strong cipher suites is used.
+// Use this option if you need specific TLS settings for your environment.
+func WithTLSConfig(tlsConfig *tls.Config) Option {
+	return func(o *JWKSFetcherOpts) error {
+		if tlsConfig == nil {
+			return fmt.Errorf("WithTLSConfig: tlsConfig cannot be nil")
+		}
+		o.tlsConfig = tlsConfig
+		return nil
+	}
+}
+
+// WithRequireHTTPS controls whether HTTPS is required for JWKS URLs.
+// By default, HTTPS is required for security (true).
+// Set to false only in secure environments like airgapped networks or internal systems
+// where TLS termination happens at a different layer.
+func WithRequireHTTPS(require bool) Option {
+	return func(o *JWKSFetcherOpts) error {
+		o.requireHTTPS = require
 		return nil
 	}
 }

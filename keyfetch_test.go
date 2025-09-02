@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -421,7 +422,125 @@ func TestMaxKeysCount(t *testing.T) {
 	assert.Empty(t, jwks.Keys)
 }
 
-// TestJWKSLimits tests that JWKS fetching works correctly with both default and custom limits.
+// TestJWKSHostValidation tests that JWKS host validation works correctly with allowlisting.
+func TestJWKSHostValidation(t *testing.T) {
+	// Generate test key
+	privateKey := generateTestKey(t)
+	jwks := createTestJWKS(privateKey, "test-key-1")
+
+	t.Run("allow all hosts when no allowlist", func(t *testing.T) {
+		// Setup test server
+		var serverURL string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/.well-known/openid-configuration":
+				// Return discovery doc with JWKS URL
+				discovery := map[string]string{
+					"jwks_uri": serverURL + "/jwks",
+				}
+				w.Header().Set("Content-Type", "application/json")
+				if err := json.NewEncoder(w).Encode(discovery); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+			case "/jwks":
+				// Return JWKS
+				w.Header().Set("Content-Type", "application/json")
+				if err := json.NewEncoder(w).Encode(jwks); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+			}
+		}))
+		defer server.Close()
+		serverURL = server.URL
+
+		// Create fetcher without host restrictions
+		fetcher, err := NewJWKSFetcher(
+			Generic{DiscoveryURL: server.URL + "/.well-known/openid-configuration"},
+			WithRequireHTTPS(false), // Allow HTTP for testing
+		)
+		require.NoError(t, err)
+		assert.NotNil(t, fetcher)
+	})
+
+	t.Run("reject JWKS from non-allowed host", func(t *testing.T) {
+		// Setup test server that returns JWKS URL with different host
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Return discovery doc with external JWKS URL
+			discovery := map[string]string{
+				"jwks_uri": "http://evil.com/jwks",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(discovery); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		}))
+		defer server.Close()
+
+		// Create fetcher with host restrictions
+		_, err := NewJWKSFetcher(
+			Generic{DiscoveryURL: server.URL + "/.well-known/openid-configuration"},
+			WithRequireHTTPS(false), // Allow HTTP for testing
+			WithAllowedJWKSHosts([]string{"trusted.com"}),
+		)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "JWKS host 'evil.com' is not in the allowed hosts list")
+	})
+
+	t.Run("accept JWKS from allowed host", func(t *testing.T) {
+		// Setup test server
+		var serverURL string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/.well-known/openid-configuration":
+				// Return discovery doc with JWKS URL using same host
+				discovery := map[string]string{
+					"jwks_uri": serverURL + "/jwks",
+				}
+				w.Header().Set("Content-Type", "application/json")
+				if err := json.NewEncoder(w).Encode(discovery); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+			case "/jwks":
+				// Return JWKS
+				w.Header().Set("Content-Type", "application/json")
+				if err := json.NewEncoder(w).Encode(jwks); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+			}
+		}))
+		defer server.Close()
+		serverURL = server.URL
+
+		// Parse server URL to get hostname
+		parsedURL, _ := url.Parse(server.URL)
+
+		// Create fetcher with host restrictions allowing test server
+		fetcher, err := NewJWKSFetcher(
+			Generic{DiscoveryURL: server.URL + "/.well-known/openid-configuration"},
+			WithRequireHTTPS(false), // Allow HTTP for testing
+			WithAllowedJWKSHosts([]string{parsedURL.Hostname()}),
+		)
+		require.NoError(t, err)
+		assert.NotNil(t, fetcher)
+	})
+
+	t.Run("Microsoft hosts preset", func(t *testing.T) {
+		// This tests that the WithMicrosoftHosts option sets the expected hosts
+		opts := &JWKSFetcherOpts{}
+		err := WithMicrosoftHosts()(opts)
+		require.NoError(t, err)
+
+		expectedHosts := []string{
+			"login.microsoftonline.com",
+			"login.microsoft.com",
+			"login.windows.net",
+			"sts.windows.net",
+		}
+		assert.ElementsMatch(t, expectedHosts, opts.allowedJWKSHosts)
+	})
+}
+
+// TestJWKSLimits tests that JWKS fetching respects both default and custom size/count limits.
 func TestJWKSLimits(t *testing.T) {
 	tests := []struct {
 		name            string

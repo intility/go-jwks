@@ -66,7 +66,7 @@ func WithHTTPClientMaxIdleConns(n int) Option {
 	}
 }
 
-// WithDebugLog lets you override the standard logger.
+// WithLogger lets you override the standard logger.
 func WithLogger(logger *slog.Logger) Option {
 	return func(o *JWKSFetcherOpts) error {
 		o.logger = logger

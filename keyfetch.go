@@ -119,7 +119,7 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 
 	jwksURL, err := fetchJWKSURL(context.Background(), discoveryURL, httpClient, opts.requireHTTPS)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch JWKS URL from discoveryURR '%s': %w", discoveryURL, err)
+		return nil, fmt.Errorf("failed to fetch JWKS URL from discoveryURL '%s': %w", discoveryURL, err)
 	}
 
 	return &JWKSFetcher{

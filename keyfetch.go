@@ -50,6 +50,7 @@ type JWKSFetcherOpts struct {
 	maxKeysCount              int         // Maximum number of keys allowed in JWKS
 	tlsConfig                 *tls.Config // TLS configuration for HTTPS connections
 	requireHTTPS              bool        // Require HTTPS for JWKS URLs (true by default for security)
+	allowedJWKSHosts          []string    // Allowlist of hostnames for JWKS URLs (empty allows all)
 }
 
 // Where the keyfetcher will fetch its public keys from.
@@ -117,7 +118,7 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 		return nil, fmt.Errorf("failed to set discovery url: %w", err)
 	}
 
-	jwksURL, err := fetchJWKSURL(context.Background(), discoveryURL, httpClient, opts.requireHTTPS)
+	jwksURL, err := fetchJWKSURL(context.Background(), discoveryURL, httpClient, opts.requireHTTPS, opts.allowedJWKSHosts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch JWKS URL from discoveryURR '%s': %w", discoveryURL, err)
 	}
@@ -223,8 +224,32 @@ func (f *JWKSFetcher) fetchRemoteJWKS(ctx context.Context, jwksURL string) (JWKS
 	return jwks, nil
 }
 
+// validateHost checks if a URL's host is in the allowed list.
+// If allowedHosts is empty, all hosts are allowed (backward compatibility).
+func validateHost(urlStr string, allowedHosts []string, urlType string) error {
+	if len(allowedHosts) == 0 {
+		return nil // No restriction if allowlist is empty
+	}
+
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("failed to parse %s URL: %w", urlType, err)
+	}
+
+	// Get hostname without port for comparison
+	hostname := parsed.Hostname()
+	
+	for _, allowed := range allowedHosts {
+		if hostname == allowed {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%s host '%s' is not in the allowed hosts list", urlType, hostname)
+}
+
 // Gets the JWKS URL from the OIDC discovery document.
-func fetchJWKSURL(ctx context.Context, discoveryURL string, client *http.Client, requireHTTPS bool) (string, error) {
+func fetchJWKSURL(ctx context.Context, discoveryURL string, client *http.Client, requireHTTPS bool, allowedHosts []string) (string, error) {
 	if discoveryURL == "" {
 		return "", fmt.Errorf("discovery url can not be empty")
 	}
@@ -262,6 +287,11 @@ func fetchJWKSURL(ctx context.Context, discoveryURL string, client *http.Client,
 
 	if discoveryDoc.JwksURI == "" {
 		return "", fmt.Errorf("jwks_uri not found in discovery doc from %s", discoveryURL)
+	}
+
+	// Validate JWKS URL host is allowed
+	if err := validateHost(discoveryDoc.JwksURI, allowedHosts, "JWKS"); err != nil {
+		return "", err
 	}
 
 	// Validate JWKS URL uses HTTPS if required
@@ -412,6 +442,34 @@ func WithTLSConfig(tlsConfig *tls.Config) Option {
 func WithRequireHTTPS(require bool) Option {
 	return func(o *JWKSFetcherOpts) error {
 		o.requireHTTPS = require
+		return nil
+	}
+}
+
+// WithAllowedJWKSHosts sets an allowlist of hostnames for JWKS URLs.
+// If set, only JWKS URLs from these hosts will be accepted.
+// If not set (default), all hosts are allowed for backward compatibility.
+// This validates the JWKS URL from the discovery document, not the discovery URL itself.
+func WithAllowedJWKSHosts(hosts []string) Option {
+	return func(o *JWKSFetcherOpts) error {
+		if len(hosts) == 0 {
+			return fmt.Errorf("WithAllowedJWKSHosts: hosts list cannot be empty (use nil for no restriction)")
+		}
+		o.allowedJWKSHosts = hosts
+		return nil
+	}
+}
+
+// WithMicrosoftHosts configures the fetcher to only accept JWKS from known Microsoft endpoints.
+// This includes common Microsoft Entra ID (formerly Azure AD) domains.
+func WithMicrosoftHosts() Option {
+	return func(o *JWKSFetcherOpts) error {
+		o.allowedJWKSHosts = []string{
+			"login.microsoftonline.com",
+			"login.microsoft.com",
+			"login.windows.net",
+			"sts.windows.net",
+		}
 		return nil
 	}
 }

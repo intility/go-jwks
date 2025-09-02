@@ -250,7 +250,7 @@ func (e EntraID) getDiscoveryEndpoint() (string, error) {
 
 func (g Generic) getDiscoveryEndpoint() (string, error) {
 	if g.DiscoveryURL == "" {
-		return "", fmt.Errorf("discovery url can be not be empty")
+		return "", fmt.Errorf("discovery url cannot be empty")
 	}
 
 	_, err := url.ParseRequestURI(g.DiscoveryURL)

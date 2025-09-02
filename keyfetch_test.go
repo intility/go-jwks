@@ -109,7 +109,8 @@ func TestStartInitialFetchSync(t *testing.T) {
 	defer server.Close()
 
 	// Create fetcher with the test server URL as discovery endpoint
-	fetcher, err := NewJWKSFetcher(Generic{DiscoveryURL: server.URL})
+	// Use WithRequireHTTPS(false) for local testing with HTTP
+	fetcher, err := NewJWKSFetcher(Generic{DiscoveryURL: server.URL}, WithRequireHTTPS(false))
 	require.NoError(t, err, "failed to create JWKS fetcher")
 
 	ctx := context.Background()
@@ -139,7 +140,8 @@ func TestStartInitialFetchError(t *testing.T) {
 	defer server.Close()
 
 	// Create fetcher with the test server URL as discovery endpoint
-	fetcher, err := NewJWKSFetcher(Generic{DiscoveryURL: server.URL})
+	// Use WithRequireHTTPS(false) for local testing with HTTP
+	fetcher, err := NewJWKSFetcher(Generic{DiscoveryURL: server.URL}, WithRequireHTTPS(false))
 	require.NoError(t, err, "failed to create JWKS fetcher")
 
 	ctx := context.Background()
@@ -199,7 +201,7 @@ func TestNoRaceConditionOnStartup(t *testing.T) {
 	defer server.Close()
 
 	// Create fetcher
-	fetcher, err := NewJWKSFetcher(Generic{DiscoveryURL: server.URL})
+	fetcher, err := NewJWKSFetcher(Generic{DiscoveryURL: server.URL}, WithRequireHTTPS(false))
 	require.NoError(t, err, "failed to create JWKS fetcher")
 
 	ctx := context.Background()
@@ -267,6 +269,7 @@ func TestBackgroundSyncContinuesAfterStart(t *testing.T) {
 	fetcher, err := NewJWKSFetcher(
 		Generic{DiscoveryURL: server.URL},
 		WithFetchInterval(testFetchInterval),
+		WithRequireHTTPS(false), // Allow HTTP for testing
 	)
 	require.NoError(t, err, "failed to create JWKS fetcher")
 
@@ -354,6 +357,7 @@ func TestMaxResponseSize(t *testing.T) {
 	fetcher, err := NewJWKSFetcher(
 		Generic{DiscoveryURL: server.URL + "/.well-known/openid-configuration"},
 		WithMaxResponseSize(100), // Very small limit
+		WithRequireHTTPS(false),  // Allow HTTP for testing
 	)
 	require.NoError(t, err)
 
@@ -405,7 +409,8 @@ func TestMaxKeysCount(t *testing.T) {
 	// Create fetcher with small max keys count
 	fetcher, err := NewJWKSFetcher(
 		Generic{DiscoveryURL: server.URL + "/.well-known/openid-configuration"},
-		WithMaxKeysCount(10), // Allow only 10 keys
+		WithMaxKeysCount(10),    // Allow only 10 keys
+		WithRequireHTTPS(false), // Allow HTTP for testing
 	)
 	require.NoError(t, err)
 
@@ -502,9 +507,10 @@ func TestJWKSLimits(t *testing.T) {
 			defer server.Close()
 
 			// Create fetcher with specified options
+			allOptions := append(tt.options, WithRequireHTTPS(false)) //nolint:gocritic // intentionally creating new slice
 			fetcher, err := NewJWKSFetcher(
 				Generic{DiscoveryURL: server.URL + "/.well-known/openid-configuration"},
-				tt.options...,
+				allOptions...,
 			)
 			require.NoError(t, err)
 

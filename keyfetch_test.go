@@ -439,11 +439,15 @@ func TestJWKSHostValidation(t *testing.T) {
 					"jwks_uri": serverURL + "/jwks",
 				}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(discovery)
+				if err := json.NewEncoder(w).Encode(discovery); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
 			case "/jwks":
 				// Return JWKS
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(jwks)
+				if err := json.NewEncoder(w).Encode(jwks); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
 			}
 		}))
 		defer server.Close()
@@ -466,7 +470,9 @@ func TestJWKSHostValidation(t *testing.T) {
 				"jwks_uri": "http://evil.com/jwks",
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(discovery)
+			if err := json.NewEncoder(w).Encode(discovery); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 		}))
 		defer server.Close()
 
@@ -491,11 +497,15 @@ func TestJWKSHostValidation(t *testing.T) {
 					"jwks_uri": serverURL + "/jwks",
 				}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(discovery)
+				if err := json.NewEncoder(w).Encode(discovery); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
 			case "/jwks":
 				// Return JWKS
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(jwks)
+				if err := json.NewEncoder(w).Encode(jwks); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
 			}
 		}))
 		defer server.Close()

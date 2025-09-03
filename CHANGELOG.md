@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/intility/go-jwks/compare/v1.7.0...v1.8.0) (2025-09-03)
+
+
+### Features
+
+* add https validation and tls config option ([#33](https://github.com/intility/go-jwks/issues/33)) ([6de2b36](https://github.com/intility/go-jwks/commit/6de2b36ef4c09dcac0b7f28978c258cf012e0810))
+* option to validate allowed hosts ([#35](https://github.com/intility/go-jwks/issues/35)) ([709cb18](https://github.com/intility/go-jwks/commit/709cb18495bc092436cb06e4afe3aa8e421c00aa))
+
 ## [1.7.0](https://github.com/intility/go-jwks/compare/v1.6.0...v1.7.0) (2025-09-02)
 
 

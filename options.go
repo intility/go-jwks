@@ -69,7 +69,7 @@ func WithHTTPClientMaxIdleConns(n int) Option {
 // WithLogger lets you override the standard logger.
 func WithLogger(logger *slog.Logger) Option {
 	return func(o *JWKSFetcherOpts) error {
-		o.logger = logger
+		o.logger = logger.With("pkg", "jwks")
 		return nil
 	}
 }

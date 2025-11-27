@@ -89,7 +89,7 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 		timeout:                   defaultTimeout,
 		httpClientIdleConnTimeout: defaultHttpClientIdleConnTimeout,
 		httpClientMaxIdleCon:      defaultHttpClientMaxIdleCon,
-		logger:                    slog.Default(),
+		logger:                    slog.Default().With("pkg", "jwks"),
 		maxResponseSize:           defaultMaxResponseSize,
 		maxKeysCount:              defaultMaxKeysCount,
 		tlsConfig:                 defaultTLSConfig(), // Use secure defaults

@@ -954,9 +954,8 @@ func TestMixedValidInvalidKeys(t *testing.T) {
 	require.NoError(t, err, "Failed to start fetcher")
 
 	// Create validator
-	validator := &JWTValidator{
-		JWKSFetcher: fetcher,
-	}
+	validator, err := NewJWTValidator(fetcher, "test-issuer", []string{"test-audience"}, []string{"RS256"})
+	require.NoError(t, err, "Failed to create validator")
 
 	// Test that valid keys can be retrieved successfully
 	keyFunc := validator.createKeyFunc()

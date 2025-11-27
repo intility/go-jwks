@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/intility/go-jwks/compare/v1.8.0...v1.8.1) (2025-11-27)
+
+
+### Bug Fixes
+
+* use options logger with suffix and add issuer logs ([#40](https://github.com/intility/go-jwks/issues/40)) ([2f2ee27](https://github.com/intility/go-jwks/commit/2f2ee274d23adae85eaad4993cb5be5f77078baf))
+
 ## [1.8.0](https://github.com/intility/go-jwks/compare/v1.7.0...v1.8.0) (2025-09-03)
 
 

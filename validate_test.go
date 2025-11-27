@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -84,8 +85,9 @@ func TestJWTMiddleware(t *testing.T) {
 
 	// Set up a dummy JWKSFetcher with preset keys.
 	minimalFetcher := &JWKSFetcher{
-		jwks:  staticJWKS,
-		mutex: &sync.RWMutex{},
+		jwks:   staticJWKS,
+		mutex:  &sync.RWMutex{},
+		logger: slog.Default().With("pkg", "jwks"),
 	}
 
 	// Setup Validator.
@@ -195,7 +197,8 @@ func TestJWTMiddleware(t *testing.T) {
 					},
 				},
 			},
-			mutex: &sync.RWMutex{},
+			mutex:  &sync.RWMutex{},
+			logger: slog.Default().With("pkg", "jwks"),
 		}
 
 		encValidator, err := NewJWTValidator(encKeyFetcher, issuer, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name})
@@ -233,7 +236,8 @@ func TestJWTMiddleware(t *testing.T) {
 					},
 				},
 			},
-			mutex: &sync.RWMutex{},
+			mutex:  &sync.RWMutex{},
+			logger: slog.Default().With("pkg", "jwks"),
 		}
 
 		sigValidator, err := NewJWTValidator(sigKeyFetcher, issuer, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name})

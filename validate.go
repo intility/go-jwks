@@ -46,6 +46,7 @@ type JWTValidator struct {
 	audiences    []string
 	validMethods []string
 	validIssuer  string
+	logger       *slog.Logger
 }
 
 func NewJWTValidator(fetcher *JWKSFetcher, validIssuer string, audiences, validMethods []string) (*JWTValidator, error) {
@@ -58,6 +59,7 @@ func NewJWTValidator(fetcher *JWKSFetcher, validIssuer string, audiences, validM
 		audiences:    audiences,
 		validMethods: validMethods,
 		validIssuer:  validIssuer,
+		logger:       fetcher.logger,
 	}, nil
 }
 
@@ -72,13 +74,13 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 			authHeader := r.Header.Get("Authorization")
 
 			if authHeader == "" {
-				slog.ErrorContext(r.Context(), "received request with no auth header")
+				validator.logger.ErrorContext(r.Context(), "received request with no auth header")
 				http.Error(w, "auth header missing", http.StatusUnauthorized)
 				return
 			}
 			parts := strings.SplitN(authHeader, " ", authHeaderPart)
 			if len(parts) != authHeaderPart || parts[0] != BearerSchema {
-				slog.ErrorContext(r.Context(), "received request with malformed auth header")
+				validator.logger.ErrorContext(r.Context(), "received request with malformed auth header")
 				http.Error(w, "bad auth header format", http.StatusBadRequest)
 				return
 			}
@@ -93,7 +95,7 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 				jwt.WithIssuer(validator.validIssuer))
 			if err != nil {
 				msg := "failed to parse jwt token with claims"
-				slog.ErrorContext(r.Context(), msg, "error", err)
+				validator.logger.ErrorContext(r.Context(), msg, "error", err, "iss", claims.Issuer, "valid iss", validator.validIssuer)
 				http.Error(w, msg, http.StatusUnauthorized)
 				return
 			}
@@ -125,7 +127,7 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 			}
 
 			if !validAud {
-				slog.ErrorContext(r.Context(), "token audience validation failed", "audiences", claims.Audience)
+				validator.logger.ErrorContext(r.Context(), "token audience validation failed", "audiences", claims.Audience)
 				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return
 			}
@@ -202,13 +204,13 @@ func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
 				// Validate key usage - only allow keys with use:"sig" or no use specified
 				// Reject keys explicitly marked for encryption only (use:"enc")
 				if key.Use != "" && key.Use != "sig" {
-					slog.Error("key usage validation failed", "kid", kid, "use", key.Use)
+					v.logger.Error("key usage validation failed", "kid", kid, "use", key.Use)
 					return nil, fmt.Errorf("key %s has invalid use '%s' for signature verification", kid, key.Use)
 				}
 
 				pubkey, err := parseKey(&key)
 				if err != nil {
-					slog.Error("failed to parse public key from JWK", "error", err)
+					v.logger.Error("failed to parse public key from JWK", "error", err)
 					return nil, fmt.Errorf("failed to parse key for kid %s: %w", kid, err)
 				}
 				if pubkey == nil {

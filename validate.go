@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -12,6 +13,11 @@ import (
 	"strings"
 
 	jwt "github.com/golang-jwt/jwt/v5"
+)
+
+var (
+	ErrInvalidToken = errors.New("token is invalid")
+	ErrInvalidAud   = errors.New("audience is invalid")
 )
 
 const (
@@ -102,31 +108,13 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 
 			if !token.Valid {
 				msg := "token parsed but is invalid"
-				slog.ErrorContext(r.Context(), msg)
+				validator.logger.ErrorContext(r.Context(), msg)
 				http.Error(w, msg, http.StatusUnauthorized)
 				return
 			}
 
 			// Check for valid audience
-			validAud := false
-			tokenAudience := claims.Audience
-
-			// Single aud
-			if len(tokenAudience) == 1 {
-				if slices.Contains(validator.audiences, tokenAudience[0]) {
-					validAud = true
-				}
-				// multiple auds
-			} else {
-				for _, aud := range tokenAudience {
-					if slices.Contains(validator.audiences, aud) {
-						validAud = true
-						break
-					}
-				}
-			}
-
-			if !validAud {
+			if !isAudienceValid(claims.Audience, validator.audiences) {
 				validator.logger.ErrorContext(r.Context(), "token audience validation failed", "audiences", claims.Audience)
 				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return
@@ -179,10 +167,11 @@ func parseKey(jwk *JSONWebKey) (interface{}, error) {
 	}
 }
 
-// Returns a key lookup function function that takes in a jwt token
-// and returns the corresponding public key if a matching key id is found in the store.
+// The createKeyFunc returns a key lookup function for a given validator.
+// A key lookup function accepts a parsed JWT token and returns the corresponing public key
+// that was used to sign it, if any is found.
 // Also validates that the key is not an encryption key.
-func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
+func (v *JWTValidator) createKeyFunc() jwt.Keyfunc {
 	return func(token *jwt.Token) (interface{}, error) {
 		kid, ok := token.Header["kid"].(string)
 		if !ok {
@@ -221,4 +210,52 @@ func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
 		}
 		return nil, fmt.Errorf("signing key not found")
 	}
+}
+
+// ValidateJWT uses a JWTValidator to validate any standalone JWT.
+func ValidateJWT(ctx context.Context, validator *JWTValidator, tokenStr string) (*UserClaims, error) {
+	keyFunc := validator.createKeyFunc()
+
+	claims := &UserClaims{}
+	// Parse and validate token.
+	token, err := jwt.ParseWithClaims(tokenStr, claims, keyFunc,
+		jwt.WithValidMethods(validator.validMethods),
+		jwt.WithIssuer(validator.validIssuer))
+	if err != nil {
+		msg := "failed to parse jwt token with claims"
+		validator.logger.ErrorContext(ctx, msg, "error", err, "iss", claims.Issuer, "valid iss", validator.validIssuer)
+		return claims, fmt.Errorf("%s: %w", msg, err)
+	}
+
+	if !token.Valid {
+		msg := "token parsed but is invalid"
+		validator.logger.ErrorContext(ctx, msg)
+		return claims, ErrInvalidToken
+	}
+
+	// Check for valid audience
+	if !isAudienceValid(claims.Audience, validator.audiences) {
+		validator.logger.ErrorContext(ctx, "token audience validation failed", "audiences", claims.Audience)
+		return claims, ErrInvalidAud
+	}
+
+	return claims, nil
+}
+
+func isAudienceValid(tokenAudience jwt.ClaimStrings, validAudiences []string) bool {
+	// Single aud
+	if len(tokenAudience) == 1 {
+		if slices.Contains(validAudiences, tokenAudience[0]) {
+			return true
+		}
+		// multiple auds
+	} else {
+		for _, aud := range tokenAudience {
+			if slices.Contains(validAudiences, aud) {
+				return true
+			}
+		}
+	}
+
+	return false
 }

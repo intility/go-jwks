@@ -97,6 +97,7 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 
 			claims, err := validator.ValidateJWT(r.Context(), tokenStr)
 			if err != nil {
+				// return generic error for security reasons
 				http.Error(w, "failed to validate jwt", http.StatusUnauthorized)
 				return
 			}
@@ -222,17 +223,9 @@ func (v *JWTValidator) ValidateJWT(ctx context.Context, tokenStr string) (*UserC
 }
 
 func isAudienceValid(tokenAudience jwt.ClaimStrings, validAudiences []string) bool {
-	// Single aud
-	if len(tokenAudience) == 1 {
-		if slices.Contains(validAudiences, tokenAudience[0]) {
+	for _, aud := range tokenAudience {
+		if slices.Contains(validAudiences, aud) {
 			return true
-		}
-		// multiple auds
-	} else {
-		for _, aud := range tokenAudience {
-			if slices.Contains(validAudiences, aud) {
-				return true
-			}
 		}
 	}
 

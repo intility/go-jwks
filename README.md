@@ -13,7 +13,7 @@ with web services.
     *   Validates the `aud` (audience) claim against a configurable list of allowed audiences.
     *   Validates the `iss` (issuer) against the configured issuer. 
 *   **HTTP Middleware:** Provides standard Go `http.Handler` middleware to protect endpoints.
-*   **Standalone JWT validator** Validate any JWT directly.
+*   **Standalone JWT validator:** Validate any JWT directly.
 *   **RSA Support:** Currently supports JWTs signed with RSA algorithms. 
 
 ## Installation

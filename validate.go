@@ -56,7 +56,8 @@ type JWTValidator struct {
 	keyFunc      jwt.Keyfunc
 }
 
-// Creates a new JWTValidator struct.
+//	NewJWTValidator creates a new JWTValidator struct.
+//
 // Empty audience, issuer or validMethods results in all tokens being rejected.
 func NewJWTValidator(fetcher *JWKSFetcher, validIssuer string, audiences, validMethods []string) (*JWTValidator, error) {
 	if len(validIssuer) == 0 {
@@ -151,7 +152,7 @@ func parseKey(jwk *JSONWebKey) (interface{}, error) {
 	}
 }
 
-// The createKeyFunc returns a key lookup function for a given validator.
+// createKeyFunc returns a key lookup function for a given validator.
 // A key lookup function accepts a parsed JWT token and returns the corresponding public key
 // that was used to sign it, if any is found.
 // Also validates that the key is not an encryption key.

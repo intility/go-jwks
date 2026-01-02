@@ -1,6 +1,6 @@
 module github.com/intility/go-jwks
 
-go 1.25.4
+go 1.25.5
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.2

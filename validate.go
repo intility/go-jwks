@@ -152,7 +152,7 @@ func parseKey(jwk *JSONWebKey) (interface{}, error) {
 }
 
 // The createKeyFunc returns a key lookup function for a given validator.
-// A key lookup function accepts a parsed JWT token and returns the corresponing public key
+// A key lookup function accepts a parsed JWT token and returns the corresponding public key
 // that was used to sign it, if any is found.
 // Also validates that the key is not an encryption key.
 func (v *JWTValidator) createKeyFunc() jwt.Keyfunc {

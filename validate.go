@@ -56,6 +56,8 @@ type JWTValidator struct {
 	keyFunc      jwt.Keyfunc
 }
 
+// Creates a new JWTValidator struct.
+// Empty audience, issuer or validMethods results in all tokens being rejected.
 func NewJWTValidator(fetcher *JWKSFetcher, validIssuer string, audiences, validMethods []string) (*JWTValidator, error) {
 	if len(validIssuer) == 0 {
 		return nil, fmt.Errorf("issuer not configured")

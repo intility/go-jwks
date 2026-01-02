@@ -958,7 +958,7 @@ func TestMixedValidInvalidKeys(t *testing.T) {
 	require.NoError(t, err, "Failed to create validator")
 
 	// Test that valid keys can be retrieved successfully
-	keyFunc := validator.createKeyFunc()
+	keyFunc := validator.keyFunc
 
 	testCases := []struct {
 		kid           string

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -12,6 +13,11 @@ import (
 	"strings"
 
 	jwt "github.com/golang-jwt/jwt/v5"
+)
+
+var (
+	ErrInvalidToken = errors.New("token is invalid")
+	ErrInvalidAud   = errors.New("audience is invalid")
 )
 
 const (
@@ -47,28 +53,33 @@ type JWTValidator struct {
 	validMethods []string
 	validIssuer  string
 	logger       *slog.Logger
+	keyFunc      jwt.Keyfunc
 }
 
+//	NewJWTValidator creates a new JWTValidator struct.
+//
+// Empty audience, issuer or validMethods results in all tokens being rejected.
 func NewJWTValidator(fetcher *JWKSFetcher, validIssuer string, audiences, validMethods []string) (*JWTValidator, error) {
 	if len(validIssuer) == 0 {
 		return nil, fmt.Errorf("issuer not configured")
 	}
 
-	return &JWTValidator{
+	v := &JWTValidator{
 		JWKSFetcher:  fetcher,
 		audiences:    audiences,
 		validMethods: validMethods,
 		validIssuer:  validIssuer,
 		logger:       fetcher.logger,
-	}, nil
+	}
+
+	v.keyFunc = v.createKeyFunc()
+	return v, nil
 }
 
 // JWTMiddleware takes a JWTValidator and return a function.
 // The returned function takes in and returns a http.Handler.
 // The returned http.HandlerFunc is the actual middleware.
 func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
-	keyFunc := validator.createKeyFunc()
-
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -87,48 +98,10 @@ func JWTMiddleware(validator *JWTValidator) func(http.Handler) http.Handler {
 
 			tokenStr := parts[1]
 
-			claims := &UserClaims{}
-
-			// Parse and validate token.
-			token, err := jwt.ParseWithClaims(tokenStr, claims, keyFunc,
-				jwt.WithValidMethods(validator.validMethods),
-				jwt.WithIssuer(validator.validIssuer))
+			claims, err := validator.ValidateJWT(r.Context(), tokenStr)
 			if err != nil {
-				msg := "failed to parse jwt token with claims"
-				validator.logger.ErrorContext(r.Context(), msg, "error", err, "iss", claims.Issuer, "valid iss", validator.validIssuer)
-				http.Error(w, msg, http.StatusUnauthorized)
-				return
-			}
-
-			if !token.Valid {
-				msg := "token parsed but is invalid"
-				slog.ErrorContext(r.Context(), msg)
-				http.Error(w, msg, http.StatusUnauthorized)
-				return
-			}
-
-			// Check for valid audience
-			validAud := false
-			tokenAudience := claims.Audience
-
-			// Single aud
-			if len(tokenAudience) == 1 {
-				if slices.Contains(validator.audiences, tokenAudience[0]) {
-					validAud = true
-				}
-				// multiple auds
-			} else {
-				for _, aud := range tokenAudience {
-					if slices.Contains(validator.audiences, aud) {
-						validAud = true
-						break
-					}
-				}
-			}
-
-			if !validAud {
-				validator.logger.ErrorContext(r.Context(), "token audience validation failed", "audiences", claims.Audience)
-				http.Error(w, "invalid token", http.StatusUnauthorized)
+				// return generic error for security reasons
+				http.Error(w, "failed to validate jwt", http.StatusUnauthorized)
 				return
 			}
 
@@ -179,10 +152,11 @@ func parseKey(jwk *JSONWebKey) (interface{}, error) {
 	}
 }
 
-// Returns a key lookup function function that takes in a jwt token
-// and returns the corresponding public key if a matching key id is found in the store.
+// createKeyFunc returns a key lookup function for a given validator.
+// A key lookup function accepts a parsed JWT token and returns the corresponding public key
+// that was used to sign it, if any is found.
 // Also validates that the key is not an encryption key.
-func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
+func (v *JWTValidator) createKeyFunc() jwt.Keyfunc {
 	return func(token *jwt.Token) (interface{}, error) {
 		kid, ok := token.Header["kid"].(string)
 		if !ok {
@@ -221,4 +195,44 @@ func (v *JWTValidator) createKeyFunc() func(*jwt.Token) (interface{}, error) {
 		}
 		return nil, fmt.Errorf("signing key not found")
 	}
+}
+
+// ValidateJWT uses a JWTValidator to validate any standalone JWT.
+// Accepts a JWT string and returns any claims specified in the UserClaims struct.
+// Returns claims even if there is an error parsing.
+func (v *JWTValidator) ValidateJWT(ctx context.Context, tokenStr string) (*UserClaims, error) {
+	claims := &UserClaims{}
+	// Parse and validate token.
+	token, err := jwt.ParseWithClaims(tokenStr, claims, v.keyFunc,
+		jwt.WithValidMethods(v.validMethods),
+		jwt.WithIssuer(v.validIssuer))
+	if err != nil {
+		msg := "failed to parse jwt token with claims"
+		v.logger.ErrorContext(ctx, msg, "error", err, "iss", claims.Issuer, "valid iss", v.validIssuer)
+		return claims, fmt.Errorf("%s: %w", msg, err)
+	}
+
+	if !token.Valid {
+		msg := "token parsed but is invalid"
+		v.logger.ErrorContext(ctx, msg)
+		return claims, ErrInvalidToken
+	}
+
+	// Check for valid audience
+	if !isAudienceValid(claims.Audience, v.audiences) {
+		v.logger.ErrorContext(ctx, "token audience validation failed", "audiences", claims.Audience)
+		return claims, ErrInvalidAud
+	}
+
+	return claims, nil
+}
+
+func isAudienceValid(tokenAudience jwt.ClaimStrings, validAudiences []string) bool {
+	for _, aud := range tokenAudience {
+		if slices.Contains(validAudiences, aud) {
+			return true
+		}
+	}
+
+	return false
 }

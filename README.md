@@ -13,6 +13,7 @@ with web services.
     *   Validates the `aud` (audience) claim against a configurable list of allowed audiences.
     *   Validates the `iss` (issuer) against the configured issuer. 
 *   **HTTP Middleware:** Provides standard Go `http.Handler` middleware to protect endpoints.
+*   **Standalone JWT validator:** Validate any JWT directly.
 *   **RSA Support:** Currently supports JWTs signed with RSA algorithms. 
 
 ## Installation
@@ -65,7 +66,11 @@ func main() {
 	issuer := "https://auth.example.com"
 
 	// Create the JWT Validator instance
-	validator := jwks.NewJWTValidator(fetcher, issuer, audiences, validMethods)
+	validator, err := jwks.NewJWTValidator(fetcher, issuer, audiences, validMethods)
+	if err != nil {
+		slog.Error("failed to create JWT validator", "error", err)
+		return
+	}
 
 	// Create the HTTP Middleware
 	jwtMiddleware := jwks.JWTMiddleware(validator)
@@ -160,6 +165,28 @@ This object holds the in-memory store of JWKS from the fetcher, allowed audience
 
 Passing this validator to the JWTMiddleware function returns a http.HandlerFunc middleware ready to authenticate incoming requests.
 The middleware expects a "Authorization: Bearer \<token>" jwt header.
+
+## Standalone validation
+If validating JWTs not part of HTTP headers, the core validation function used in the middleware comes in handy.
+The `ValidateJWT()` function is exported through the `JWTValidator` struct and offers standalone validation.
+
+```go
+// Validate a JWT from any source (not just HTTP headers)
+claims, err := validator.ValidateJWT(ctx, tokenString)
+if err != nil {
+    // Check for specific error types
+    if errors.Is(err, jwks.ErrInvalidAud) {
+        log.Println("token has invalid audience")
+    }
+    log.Printf("validation failed: %v", err)
+    return
+}
+
+// Access validated claims
+fmt.Printf("User: %s, Email: %s\n", claims.Subject, claims.Email)
+```
+
+The function returns `ErrInvalidAud` when audience validation fails, allowing for specific error handling with `errors.Is()`.
 
 ## TODO
 Add support for EC (Elliptic Curve) key types (kty: "EC") and algorithms.

@@ -134,7 +134,7 @@ func TestJWTMiddleware(t *testing.T) {
 		testHandler.ServeHTTP(recorder, req)
 
 		assert.Equal(t, http.StatusUnauthorized, recorder.Code, "Expected status Unauthorized for invalid signature")
-		assert.Contains(t, recorder.Body.String(), "failed to parse jwt token", "Expected parsing error message") // The library wraps signature errors
+		assert.Contains(t, recorder.Body.String(), "failed to validate jwt", "Expected generic error message for invalid signature")
 	})
 
 	t.Run("Invalid JWT - Wrong Audience", func(t *testing.T) {
@@ -148,7 +148,7 @@ func TestJWTMiddleware(t *testing.T) {
 		testHandler.ServeHTTP(recorder, req)
 
 		assert.Equal(t, http.StatusUnauthorized, recorder.Code, "Expected status Unauthorized for wrong audience")
-		assert.Contains(t, recorder.Body.String(), "invalid token", "Expected invalid token message for wrong audience")
+		assert.Contains(t, recorder.Body.String(), "failed to validate jwt", "Expected generic error message for wrong audience")
 	})
 
 	t.Run("Invalid JWT - Expired", func(t *testing.T) {
@@ -163,7 +163,7 @@ func TestJWTMiddleware(t *testing.T) {
 		testHandler.ServeHTTP(recorder, req)
 
 		assert.Equal(t, http.StatusUnauthorized, recorder.Code, "Expected status Unauthorized for expired token")
-		assert.Contains(t, recorder.Body.String(), "failed to parse jwt token", "Expected parsing error message for expired token") // jwt-go includes expiry check in Parse
+		assert.Contains(t, recorder.Body.String(), "failed to validate jwt", "Expected generic error message for expired token")
 	})
 
 	t.Run("Invalid issuer", func(t *testing.T) {
@@ -178,8 +178,8 @@ func TestJWTMiddleware(t *testing.T) {
 
 		testHandler.ServeHTTP(recorder, req)
 
-		assert.Equal(t, http.StatusUnauthorized, recorder.Code, "Expected status Unauthorized for valid token")
-		assert.Contains(t, recorder.Body.String(), "failed to parse jwt token with claims", "Expected 'failed to parse jwt token with claims' for invalid issuer")
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code, "Expected status Unauthorized for invalid issuer")
+		assert.Contains(t, recorder.Body.String(), "failed to validate jwt", "Expected generic error message for invalid issuer")
 	})
 
 	// Key usage validation tests
@@ -219,7 +219,7 @@ func TestJWTMiddleware(t *testing.T) {
 
 		// Should fail because the key is marked for encryption only
 		assert.Equal(t, http.StatusUnauthorized, recorder.Code, "Expected status Unauthorized for encryption key")
-		assert.Contains(t, recorder.Body.String(), "failed to parse jwt token", "Expected parsing error for encryption key")
+		assert.Contains(t, recorder.Body.String(), "failed to validate jwt", "Expected generic error message for encryption key")
 	})
 
 	t.Run("Accept signature key", func(t *testing.T) {

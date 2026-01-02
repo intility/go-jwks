@@ -195,6 +195,8 @@ func (v *JWTValidator) createKeyFunc() jwt.Keyfunc {
 }
 
 // ValidateJWT uses a JWTValidator to validate any standalone JWT.
+// Accepts a JWT string and returns any claims specified in the UserClaims struct.
+// Returns claims even if there is an error parsing.
 func (v *JWTValidator) ValidateJWT(ctx context.Context, tokenStr string) (*UserClaims, error) {
 	claims := &UserClaims{}
 	// Parse and validate token.

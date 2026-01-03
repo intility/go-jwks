@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/intility/go-jwks/compare/v1.8.1...v1.9.0) (2026-01-02)
+
+
+### Features
+
+* standalone validator ([#42](https://github.com/intility/go-jwks/issues/42)) ([e1fd182](https://github.com/intility/go-jwks/commit/e1fd182d46bda280c260d81d108b8e9ef206ea60))
+
 ## [1.8.1](https://github.com/intility/go-jwks/compare/v1.8.0...v1.8.1) (2025-11-27)
 
 

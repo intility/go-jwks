@@ -3,6 +3,9 @@ name: Go
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 env:
   GOLANGCI_VERSION: "v2.4.0"
 

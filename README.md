@@ -1,7 +1,7 @@
 # Go JWKS Fetcher and JWT Validator
 
-A go package for fetching JSON Web Key Sets (JWKS) from an authorization server
-and validating JSON Web Tokens (JWTs) using these keys. It includes HTTP middleware for integration 
+A go package for fetching JSON Web Key Sets (JWKS) and validating 
+JSON Web Tokens (JWTs) using these keys. It includes HTTP middleware for integration 
 with web services.
 
 ## Features
@@ -22,75 +22,20 @@ go get github.com/intility/go-jwks
 ```
 
 
-## Example
+## Quick Start
 ```go
-package main
+fetcher, _ := jwks.NewJWKSFetcher(jwks.EntraID{TenantID: "your-tenant-id"})
+fetcher.Start(ctx)
 
-import (
-	"context"
-	"fmt"
-	"log/slog"
-	"net/http"
-	"time"
+validator, _ := jwks.NewJWTValidator(fetcher, issuer, audiences, validMethods)
+middleware := jwks.JWTMiddleware(validator)
 
-	jwks "github.com/intility/go-jwks"
-
-	"github.com/golang-jwt/jwt/v5"
-)
-
-func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() 
-
-	// The NewJWKSFetcher takes a keysource to fetch public keys.
-	// The keySource interface is satisfied by EntraID and Generic.
-	// Optionally set other parameters using functional options.
-	fetcher, err := jwks.NewJWKSFetcher(jwks.EntraID{TenantID: "your-tenant-id"})
-	if err != nil {
-		slog.Error("failed to create fetcher", "error", err)
-	}
-
-  // Start fetching JWKS (performs initial fetch synchronously)
-	if err := fetcher.Start(ctx); err != nil {
-		slog.Error("failed to start JWKS fetcher", "error", err)
-		return
-	}
-
-	// Configure JWT Validator
-	audiences := []string{"api://YOUR_API_CLIENT_ID"}
-
-	// Specify allowed signing algorithms
-	validMethods := []string{jwt.SigningMethodRS256.Alg()}
-
-	// Specify you issuer
-	issuer := "https://auth.example.com"
-
-	// Create the JWT Validator instance
-	validator, err := jwks.NewJWTValidator(fetcher, issuer, audiences, validMethods)
-	if err != nil {
-		slog.Error("failed to create JWT validator", "error", err)
-		return
-	}
-
-	// Create the HTTP Middleware
-	jwtMiddleware := jwks.JWTMiddleware(validator)
-
-	mux := http.NewServeMux()
-
-	// Apply the middleware to protected routes
-	mux.Handle("/api/protected/ping", jwtMiddleware(http.HandlerFunc(pingHandler)))
-
-	slog.Info("Server starting on :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
-		slog.Error("Server failed", "error", err)
-	}
-}
-
-func pingHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"message": "pong"}`)
-}
+mux.Handle("/protected", middleware(yourHandler))
 ```
+
+See the [examples](./examples) folder for complete runnable examples:
+- **[basic](./examples/basic)** - Standard JWT validation with HTTP middleware
+- **[custom-claims](./examples/custom-claims)** - Using generic claims types for application-specific JWT fields
 
 ## Configuration Options
 
@@ -187,7 +132,3 @@ fmt.Printf("User: %s, Email: %s\n", claims.Subject, claims.Email)
 ```
 
 The function returns `ErrInvalidAud` when audience validation fails, allowing for specific error handling with `errors.Is()`.
-
-## TODO
-Add support for EC (Elliptic Curve) key types (kty: "EC") and algorithms.
-

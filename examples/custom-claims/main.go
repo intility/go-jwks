@@ -16,9 +16,9 @@ import (
 // MyClaims defines custom claims for your application.
 // Embed jwt.RegisteredClaims to get standard fields (iss, aud, exp, etc.)
 type MyClaims struct {
-	TenantID string   `json:"tenant_id"`
-	Roles    []string `json:"roles"`
-	Department string `json:"department,omitempty"`
+	TenantID   string   `json:"tenant_id"`
+	Roles      []string `json:"roles"`
+	Department string   `json:"department,omitempty"`
 
 	jwt.RegisteredClaims
 }
@@ -78,7 +78,7 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Access custom fields with full type safety
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"tenant": "%s", "roles": %q, "department": "%s"}`,
+	_, _ = fmt.Fprintf(w, `{"tenant": "%s", "roles": %q, "department": "%s"}`,
 		claims.TenantID,
 		claims.Roles,
 		claims.Department,

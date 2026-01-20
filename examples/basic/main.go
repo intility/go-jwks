@@ -70,5 +70,5 @@ func pingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"message": "pong", "user": "%s"}`, claims.Email)
+	_, _ = fmt.Fprintf(w, `{"message": "pong", "user": "%s"}`, claims.Email)
 }

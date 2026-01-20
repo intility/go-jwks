@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/intility/go-jwks/compare/v1.9.0...v1.10.0) (2026-01-20)
+
+
+### Features
+
+* add validator for generic custom claims ([b57f007](https://github.com/intility/go-jwks/commit/b57f0078979a467b66f9f88a7e8b37dae767e5ec))
+
 ## [1.9.0](https://github.com/intility/go-jwks/compare/v1.8.1...v1.9.0) (2026-01-02)
 
 

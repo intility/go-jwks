@@ -66,8 +66,8 @@ func NewJWTValidator(fetcher *JWKSFetcher, validIssuer string, audiences, validM
 
 //	NewJWTValidatorWithClaims creates a new JWTValidator struct with custom claims.
 //
-// Type will be infered from user provided claims constuctor.
-// T most be a pointer type for JSON deconding to work.
+// Type will be inferred from user provided claims constructor.
+// T must be a pointer type for JSON decoding to work.
 // Empty audience or validMethods results in all tokens being rejected.
 func NewJWTValidatorWithClaims[T jwt.Claims](
 	fetcher *JWKSFetcher,
@@ -78,6 +78,10 @@ func NewJWTValidatorWithClaims[T jwt.Claims](
 ) (*JWTValidator[T], error) {
 	if len(validIssuer) == 0 {
 		return nil, fmt.Errorf("issuer not configured")
+	}
+
+	if newClaims == nil {
+		return nil, fmt.Errorf("newClaims function is required")
 	}
 
 	v := &JWTValidator[T]{
@@ -215,10 +219,9 @@ func (v *JWTValidator[T]) createKeyFunc() jwt.Keyfunc {
 }
 
 // ValidateJWT uses a JWTValidator to validate any standalone JWT.
-// Accepts a JWT string and returns any claims specified in the UserClaims struct.
+// Accepts a JWT string and returns any claims specified in the custom claims type.
 // Returns claims even if there is an error parsing.
 func (v *JWTValidator[T]) ValidateJWT(ctx context.Context, tokenStr string) (T, error) {
-
 	claims := v.newClaims()
 	// Parse and validate token.
 	token, err := jwt.ParseWithClaims(tokenStr, claims, v.keyFunc,

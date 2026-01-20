@@ -17,6 +17,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// customClaims is a test struct to verify generic claims work end-to-end.
+type customClaims struct {
+	TenantID string `json:"tenant_id,omitempty"`
+	jwtpkg.RegisteredClaims
+}
+
 // generateRSAKey creates a new RSA private key.
 func generateRSAKey() (*rsa.PrivateKey, error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -276,5 +282,70 @@ func TestJWTMiddleware(t *testing.T) {
 		// Should succeed because keys without use field can be used for any purpose
 		assert.Equal(t, http.StatusOK, recorder.Code, "Expected status OK for key without use field")
 		assert.Equal(t, "OK", recorder.Body.String(), "Expected 'OK' body for key without use field")
+	})
+	t.Run("Extract claims from context", func(t *testing.T) {
+		validToken, err := generateTestJWT(signingKey, kid, audience, time.Now().Add(time.Hour), jwtpkg.SigningMethodRS256, issuer)
+		assert.NoError(t, err)
+
+		// Handler that verifies ClaimsFromContext works
+		claimsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, err := ClaimsFromContext[*UserClaims](r.Context())
+			assert.NoError(t, err, "ClaimsFromContext should not return error")
+			assert.NotNil(t, claims, "Claims should not be nil")
+
+			// Verify claims contain expected values from the token
+			assert.Equal(t, issuer, claims.Issuer, "Issuer should match")
+			assert.Contains(t, claims.Audience, audience, "Audience should contain expected value")
+
+			w.WriteHeader(http.StatusOK)
+		})
+
+		handler := jwtMiddleware(claimsHandler)
+
+		req := httptest.NewRequest("GET", "/protected", nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", validToken))
+		recorder := httptest.NewRecorder()
+
+		handler.ServeHTTP(recorder, req)
+
+		assert.Equal(t, http.StatusOK, recorder.Code, "Expected status OK")
+	})
+
+	t.Run("Custom claims type via generics", func(t *testing.T) {
+		// Create validator with custom claims type
+		customValidator, err := NewJWTValidatorWithClaims(
+			minimalFetcher, issuer, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name},
+			func() *customClaims { return &customClaims{} },
+		)
+		assert.NoError(t, err)
+
+		// Generate token with custom tenant_id claim
+		token := jwtpkg.New(jwtpkg.SigningMethodRS256)
+		token.Header["kid"] = kid
+		claims := token.Claims.(jwtpkg.MapClaims)
+		claims["aud"] = audience
+		claims["exp"] = time.Now().Add(time.Hour).Unix()
+		claims["iat"] = time.Now().Unix()
+		claims["nbf"] = time.Now().Unix()
+		claims["iss"] = issuer
+		claims["tenant_id"] = "tenant-12345"
+
+		tokenStr, err := token.SignedString(signingKey)
+		assert.NoError(t, err)
+
+		// Handler verifies custom claim is accessible
+		customHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, err := ClaimsFromContext[*customClaims](r.Context())
+			assert.NoError(t, err)
+			assert.Equal(t, "tenant-12345", claims.TenantID, "Custom TenantID should be parsed")
+			w.WriteHeader(http.StatusOK)
+		})
+
+		req := httptest.NewRequest("GET", "/protected", nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokenStr))
+		recorder := httptest.NewRecorder()
+
+		JWTMiddleware(customValidator)(customHandler).ServeHTTP(recorder, req)
+		assert.Equal(t, http.StatusOK, recorder.Code)
 	})
 }

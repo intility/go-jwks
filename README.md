@@ -5,9 +5,8 @@
 ## Features
 
 - **Minimal Config** — Get up and running with just your audience + tenant ID or genric discovery endpoint
-- **OIDC Discovery** — Fetches JWKS URI and issuer from discovery endpoints
 - **HTTP Middleware** — Drop-in `http.Handler` middleware for protected routes
-- **Generic OIDC** — Works with Auth0, Okta, Keycloak, or any OIDC provider 
+- **Generic OIDC** — Works with Auth0, Okta, or any OIDC provider 
 
 ## Installation
 ```bash
@@ -28,7 +27,7 @@ mux.Handle("/protected", middleware(yourHandler))
 
 The validator uses **smart defaults**:
 - **Issuer**: Automatically extracted from the OIDC discovery document
-- **Signing methods**: RS256 (the most common algorithm)
+- **Signing methods**: RS256
 
 See the [examples](./examples) folder for complete runnable examples:
 - **[basic](./examples/basic)** - Standard JWT validation with HTTP middleware

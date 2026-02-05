@@ -18,6 +18,7 @@ import (
 var (
 	ErrInvalidToken = errors.New("token is invalid")
 	ErrInvalidAud   = errors.New("audience is invalid")
+	ErrInvalidIss   = errors.New("invalid issuer")
 )
 
 const (
@@ -28,6 +29,8 @@ const (
 type JWKS struct {
 	Keys []JSONWebKey `json:"keys"`
 }
+
+// JSONWebKey follows the RFC 7517 - JSON Web Key.
 type JSONWebKey struct {
 	Kid string `json:"kid"`           // Key ID - required
 	Kty string `json:"kty"`           // Key Type - Required
@@ -52,32 +55,60 @@ type JWTValidator[T jwt.Claims] struct {
 	JWKSFetcher  *JWKSFetcher
 	audiences    []string
 	validMethods []string
-	validIssuer  string
+	validIssuers []string
 	logger       *slog.Logger
 	keyFunc      jwt.Keyfunc
 }
 
-//	NewJWTValidator creates a new JWTValidator.
+// NewJWTValidator creates a new JWTValidator.
 //
-// Empty audience, issuer or validMethods results in all tokens being rejected.
-func NewJWTValidator(fetcher *JWKSFetcher, validIssuer string, audiences, validMethods []string) (*JWTValidator[*UserClaims], error) {
-	return NewJWTValidatorWithClaims(fetcher, validIssuer, audiences, validMethods, func() *UserClaims { return &UserClaims{} })
+// Sensible defaults are set to cater to most use cases:
+//   - Issuer: Extracted from the discovery document (works for single-tenant apps)
+//   - Signing methods: RS256
+//   - Audiences: The required audience parameter, plus any from WithAdditionalAudiences()
+//
+// For multi-tenant applications using endpoints like /common/, /organizations/, or /consumers/,
+// the discovery document returns a templated issuer that won't match real tokens.
+// In this case, you must use WithIssuers() to explicitly specify the allowed issuers.
+//
+// Options:
+//   - WithIssuers(issuers ...string) - Override the default issuer(s)
+//   - WithAdditionalAudiences(audiences ...string) - Add more valid audiences
+//   - WithValidMethods(methods ...string) - Override the default signing methods
+func (f *JWKSFetcher) NewJWTValidator(audience string, options ...ValidatorOptionFunc) (*JWTValidator[*UserClaims], error) {
+	return NewJWTValidatorWithClaims(f, audience, func() *UserClaims { return &UserClaims{} }, options...)
 }
 
 //	NewJWTValidatorWithClaims creates a new JWTValidator struct with custom claims.
 //
 // Type will be inferred from user provided claims constructor.
 // T must be a pointer type for JSON decoding to work.
-// Empty audience or validMethods results in all tokens being rejected.
+// For available customization options see NewJWTValidator.
 func NewJWTValidatorWithClaims[T jwt.Claims](
 	fetcher *JWKSFetcher,
-	validIssuer string,
-	audiences []string,
-	validMethods []string,
+	audience string,
 	newClaims func() T,
+	options ...ValidatorOptionFunc,
 ) (*JWTValidator[T], error) {
-	if len(validIssuer) == 0 {
-		return nil, fmt.Errorf("issuer not configured")
+	// set default validator options
+	opts := &ValidatorOptions{
+		// Issuer extracted from the discovery document.
+		issuers:      []string{fetcher.issuer},
+		validMethods: []string{jwt.SigningMethodRS256.Alg()},
+		audiences:    []string{audience},
+	}
+
+	// apply options set by user
+	for _, o := range options {
+		err := o(opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to construct JWTValidator from options: %w", err)
+		}
+	}
+
+	// Validate that we have at least one issuer configured
+	if len(opts.issuers) == 0 || (len(opts.issuers) == 1 && opts.issuers[0] == "") {
+		return nil, fmt.Errorf("no issuer configured: discovery document has no issuer field; use WithIssuers() to set one explicitly")
 	}
 
 	if newClaims == nil {
@@ -87,9 +118,9 @@ func NewJWTValidatorWithClaims[T jwt.Claims](
 	v := &JWTValidator[T]{
 		newClaims:    newClaims,
 		JWKSFetcher:  fetcher,
-		audiences:    audiences,
-		validMethods: validMethods,
-		validIssuer:  validIssuer,
+		audiences:    opts.audiences,
+		validMethods: opts.validMethods,
+		validIssuers: opts.issuers,
 		logger:       fetcher.logger,
 	}
 
@@ -225,16 +256,23 @@ func (v *JWTValidator[T]) ValidateJWT(ctx context.Context, tokenStr string) (T, 
 	claims := v.newClaims()
 	// Parse and validate token.
 	token, err := jwt.ParseWithClaims(tokenStr, claims, v.keyFunc,
-		jwt.WithValidMethods(v.validMethods),
-		jwt.WithIssuer(v.validIssuer))
+		jwt.WithValidMethods(v.validMethods))
 	if err != nil {
-		var issuer string
-		if iss, err := claims.GetIssuer(); err == nil {
-			issuer = iss
-		}
 		msg := "failed to parse jwt token with claims"
-		v.logger.ErrorContext(ctx, msg, "error", err, "iss", issuer, "valid iss", v.validIssuer)
+		v.logger.ErrorContext(ctx, msg, "error", err)
 		return claims, fmt.Errorf("%s: %w", msg, err)
+	}
+
+	// validate issuer (we dont use jwt´s built in issuer validation to allow multiple issuers)
+	issuer, err := claims.GetIssuer()
+	if err != nil {
+		v.logger.ErrorContext(ctx, "failed to get issuer from claims", "error", err)
+		return claims, ErrInvalidIss
+	}
+
+	if !slices.Contains(v.validIssuers, issuer) {
+		v.logger.ErrorContext(ctx, "invalid issuer", "received", issuer, "wanted", v.validIssuers)
+		return claims, ErrInvalidIss
 	}
 
 	if !token.Valid {
@@ -243,13 +281,13 @@ func (v *JWTValidator[T]) ValidateJWT(ctx context.Context, tokenStr string) (T, 
 		return claims, ErrInvalidToken
 	}
 
+	// validate valid audiences
 	aud, err := claims.GetAudience()
 	if err != nil {
 		v.logger.ErrorContext(ctx, "failed to get audience from token")
 		return claims, ErrInvalidAud
 	}
 
-	// Check for valid audience
 	if !isAudienceValid(aud, v.audiences) {
 		v.logger.ErrorContext(ctx, "token audience validation failed", "audiences", aud)
 		return claims, ErrInvalidAud

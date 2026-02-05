@@ -26,11 +26,13 @@ const (
 
 type discoveryDocument struct {
 	JwksURI string `json:"jwks_uri"`
+	Issuer  string `json:"issuer"`
 }
 
 type JWKSFetcher struct {
 	jwksURL         string
 	jwks            *JWKS
+	issuer          string
 	mutex           *sync.RWMutex
 	fetchInterval   time.Duration
 	httpClient      *http.Client
@@ -119,15 +121,16 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 		return nil, fmt.Errorf("failed to set discovery url: %w", err)
 	}
 
-	jwksURL, err := fetchJWKSURL(context.Background(), discoveryURL, httpClient, opts.requireHTTPS, opts.allowedJWKSHosts)
+	discoveryDocument, err := fetchDiscoveryDocument(context.Background(), discoveryURL, httpClient, opts.requireHTTPS, opts.allowedJWKSHosts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch JWKS URL from discoveryURL '%s': %w", discoveryURL, err)
 	}
 
 	return &JWKSFetcher{
-		jwksURL:         jwksURL,
+		jwksURL:         discoveryDocument.JwksURI,
 		mutex:           &sync.RWMutex{},
 		jwks:            nil,
+		issuer:          discoveryDocument.Issuer,
 		fetchInterval:   opts.fetchInterval,
 		httpClient:      httpClient,
 		logger:          opts.logger,
@@ -248,63 +251,63 @@ func validateHost(urlStr string, allowedHosts []string, urlType string) error {
 }
 
 // Gets the JWKS URL from the OIDC discovery document.
-func fetchJWKSURL(ctx context.Context, discoveryURL string, client *http.Client, requireHTTPS bool, allowedHosts []string) (string, error) {
+func fetchDiscoveryDocument(ctx context.Context, discoveryURL string, client *http.Client, requireHTTPS bool, allowedHosts []string) (*discoveryDocument, error) {
 	if discoveryURL == "" {
-		return "", fmt.Errorf("discovery url can not be empty")
+		return nil, fmt.Errorf("discovery url can not be empty")
 	}
 
 	// Validate discovery URL uses HTTPS if required
 	if requireHTTPS {
 		discoveryParsed, err := url.Parse(discoveryURL)
 		if err != nil {
-			return "", fmt.Errorf("failed to parse discovery URL: %w", err)
+			return nil, fmt.Errorf("failed to parse discovery URL: %w", err)
 		}
 		if discoveryParsed.Scheme != "https" {
-			return "", fmt.Errorf("discovery URL must use HTTPS, got scheme: %s (use WithRequireHTTPS(false) to allow HTTP in secure environments)", discoveryParsed.Scheme)
+			return nil, fmt.Errorf("discovery URL must use HTTPS, got scheme: %s (use WithRequireHTTPS(false) to allow HTTP in secure environments)", discoveryParsed.Scheme)
 		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create OIDC discovery request: %w", err)
+		return nil, fmt.Errorf("failed to create OIDC discovery request: %w", err)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to request get OIDC discovery endpoint (%s): %w", discoveryURL, err)
+		return nil, fmt.Errorf("failed to request get OIDC discovery endpoint (%s): %w", discoveryURL, err)
 	}
 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("OIDC discovery request to %s returned non 200 status: %w", discoveryURL, err)
+		return nil, fmt.Errorf("OIDC discovery request to %s returned non 200 status: %w", discoveryURL, err)
 	}
 
-	var discoveryDoc discoveryDocument
-	if err := json.NewDecoder(resp.Body).Decode(&discoveryDoc); err != nil {
-		return "", fmt.Errorf("failed to decode OIDC discovery JSON from %s: %w", discoveryURL, err)
+	discoveryDoc := &discoveryDocument{}
+	if err := json.NewDecoder(resp.Body).Decode(discoveryDoc); err != nil {
+		return nil, fmt.Errorf("failed to decode OIDC discovery JSON from %s: %w", discoveryURL, err)
 	}
 
 	if discoveryDoc.JwksURI == "" {
-		return "", fmt.Errorf("jwks_uri not found in discovery doc from %s", discoveryURL)
+		return nil, fmt.Errorf("jwks_uri not found in discovery doc from %s", discoveryURL)
 	}
 
 	// Validate JWKS URL host is allowed
 	if err := validateHost(discoveryDoc.JwksURI, allowedHosts, "JWKS"); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// Validate JWKS URL uses HTTPS if required
 	if requireHTTPS {
 		jwksParsed, err := url.Parse(discoveryDoc.JwksURI)
 		if err != nil {
-			return "", fmt.Errorf("failed to parse JWKS URL from discovery document: %w", err)
+			return nil, fmt.Errorf("failed to parse JWKS URL from discovery document: %w", err)
 		}
 		if jwksParsed.Scheme != "https" {
-			return "", fmt.Errorf("JWKS URL must use HTTPS for security, got: %s (use WithRequireHTTPS(false) to allow HTTP in secure environments)", discoveryDoc.JwksURI)
+			return nil, fmt.Errorf("JWKS URL must use HTTPS for security, got: %s (use WithRequireHTTPS(false) to allow HTTP in secure environments)", discoveryDoc.JwksURI)
 		}
 	}
 
-	return discoveryDoc.JwksURI, nil
+	return discoveryDoc, nil
 }
 
 func (e EntraID) getDiscoveryEndpoint() (string, error) {

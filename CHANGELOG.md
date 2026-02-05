@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/intility/go-jwks/compare/v1.10.0...v1.11.0) (2026-02-05)
+
+
+### Features
+
+* refactor api surface and set default for JWTValidator ([#51](https://github.com/intility/go-jwks/issues/51)) ([7d62848](https://github.com/intility/go-jwks/commit/7d62848a67cd01b13d3b0134624fbe5ef1856cd0))
+
 ## [1.10.0](https://github.com/intility/go-jwks/compare/v1.9.0...v1.10.0) (2026-01-20)
 
 

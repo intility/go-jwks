@@ -8,8 +8,6 @@ import (
 	"net/http"
 
 	jwks "github.com/intility/go-jwks"
-
-	"github.com/golang-jwt/jwt/v5"
 )
 
 func main() {
@@ -31,17 +29,11 @@ func main() {
 		return
 	}
 
-	// Configure JWT Validator
-	audiences := []string{"api://YOUR_API_CLIENT_ID"}
-
-	// Specify allowed signing algorithms
-	validMethods := []string{jwt.SigningMethodRS256.Alg()}
-
-	// Specify your issuer
-	issuer := "https://auth.example.com"
-
 	// Create the JWT Validator instance
-	validator, err := jwks.NewJWTValidator(fetcher, issuer, audiences, validMethods)
+	// - audience is required (first parameter)
+	// - issuer defaults to discovery document (override with WithIssuers for multi-tenant)
+	// - signing methods default to RS256 (override with WithValidMethods)
+	validator, err := fetcher.NewJWTValidator("api://YOUR_API_CLIENT_ID")
 	if err != nil {
 		slog.Error("failed to create JWT validator", "error", err)
 		return

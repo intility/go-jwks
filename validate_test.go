@@ -99,7 +99,7 @@ func TestJWTMiddleware(t *testing.T) {
 	// Setup Validator.
 	audience := "api://my-test-api"
 	issuer := "https://auth.example.com"
-	validator, err := NewJWTValidator(minimalFetcher, issuer, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name})
+	validator, err := minimalFetcher.NewJWTValidator(audience, WithIssuers(issuer))
 	assert.NoError(t, err, "failed to create validator")
 
 	// Setup Middleware
@@ -207,7 +207,7 @@ func TestJWTMiddleware(t *testing.T) {
 			logger: slog.Default().With("pkg", "jwks"),
 		}
 
-		encValidator, err := NewJWTValidator(encKeyFetcher, issuer, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name})
+		encValidator, err := encKeyFetcher.NewJWTValidator(audience, WithIssuers(issuer))
 		assert.NoError(t, err, "failed to create validator with encryption key")
 
 		encMiddleware := JWTMiddleware(encValidator)
@@ -246,7 +246,7 @@ func TestJWTMiddleware(t *testing.T) {
 			logger: slog.Default().With("pkg", "jwks"),
 		}
 
-		sigValidator, err := NewJWTValidator(sigKeyFetcher, issuer, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name})
+		sigValidator, err := sigKeyFetcher.NewJWTValidator(audience, WithIssuers(issuer))
 		assert.NoError(t, err, "failed to create validator with signature key")
 
 		sigMiddleware := JWTMiddleware(sigValidator)
@@ -314,8 +314,10 @@ func TestJWTMiddleware(t *testing.T) {
 	t.Run("Custom claims type via generics", func(t *testing.T) {
 		// Create validator with custom claims type
 		customValidator, err := NewJWTValidatorWithClaims(
-			minimalFetcher, issuer, []string{audience}, []string{jwtpkg.SigningMethodRS256.Name},
+			minimalFetcher,
+			audience,
 			func() *customClaims { return &customClaims{} },
+			WithIssuers(issuer),
 		)
 		assert.NoError(t, err)
 

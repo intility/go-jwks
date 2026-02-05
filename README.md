@@ -1,20 +1,13 @@
 # Go JWKS Fetcher and JWT Validator
 
-A go package for fetching JSON Web Key Sets (JWKS) and validating 
-JSON Web Tokens (JWTs) using these keys. It includes HTTP middleware for integration 
-with web services.
+ A Go library for JWT validation with automatic JWKS fetching and key rotation. Includes HTTP middleware.
 
 ## Features
-*   **JWKS Fetching:** Retrieves JWKS from a specified discovery URL (e.g. Microsoft Entra ID discovery endpoint).
-*   **Automatic Key Rotation:** Periodically fetches the JWKS endpoint to ensure keys are up-to-date.
-*   **JWT Validation:**
-    *   Verifies the JWT signature using the public key corresponding to the `kid` (Key ID) in the token header.
-    *   Validates the `alg` (algorithm) used for signing against a configurable list.
-    *   Validates the `aud` (audience) claim against a configurable list of allowed audiences.
-    *   Validates the `iss` (issuer) against the configured issuer. 
-*   **HTTP Middleware:** Provides standard Go `http.Handler` middleware to protect endpoints.
-*   **Standalone JWT validator:** Validate any JWT directly.
-*   **RSA Support:** Currently supports JWTs signed with RSA algorithms. 
+
+- **Minimal Config** — Get up and running with just your audience + tenant ID or genric discovery endpoint
+- **OIDC Discovery** — Fetches JWKS URI and issuer from discovery endpoints
+- **HTTP Middleware** — Drop-in `http.Handler` middleware for protected routes
+- **Generic OIDC** — Works with Auth0, Okta, Keycloak, or any OIDC provider 
 
 ## Installation
 ```bash
@@ -27,38 +20,46 @@ go get github.com/intility/go-jwks
 fetcher, _ := jwks.NewJWKSFetcher(jwks.EntraID{TenantID: "your-tenant-id"})
 fetcher.Start(ctx)
 
-validator, _ := jwks.NewJWTValidator(fetcher, issuer, audiences, validMethods)
+validator, _ := fetcher.NewJWTValidator("api://your-audience")
 middleware := jwks.JWTMiddleware(validator)
 
 mux.Handle("/protected", middleware(yourHandler))
 ```
 
+The validator uses **smart defaults**:
+- **Issuer**: Automatically extracted from the OIDC discovery document
+- **Signing methods**: RS256 (the most common algorithm)
+
 See the [examples](./examples) folder for complete runnable examples:
 - **[basic](./examples/basic)** - Standard JWT validation with HTTP middleware
 - **[custom-claims](./examples/custom-claims)** - Using generic claims types for application-specific JWT fields
 
-## Configuration Options
+## Fetcher Options
 
-The `JWKSFetcher` can be configured using functional options to customize its behavior:
+The fetcher uses secure defaults (HTTPS required, TLS 1.2+, 24h refresh). Override when needed:
 
-### Security Options
-- `WithRequireHTTPS(bool)` - Enforce HTTPS for JWKS endpoints (default: true)
-- `WithAllowedJWKSHosts([]string)` - Restrict JWKS fetching to specific hosts
-- `WithMicrosoftHosts()` - Preset configuration for Microsoft Entra ID hosts
-- `WithTLSConfig(*tls.Config)` - Custom TLS configuration for JWKS requests
-
-### Performance Options
-- `WithFetchInterval(time.Duration)` - Set the interval for refreshing JWKS (default: 24 hours)
-- `WithMaxResponseSize(int64)` - Limit JWKS response size (default: 1MB)
-- `WithMaxKeysCount(int)` - Limit the number of keys in JWKS (default: 100)
-
-### Example with Options
 ```go
 fetcher, err := jwks.NewJWKSFetcher(
     jwks.Generic{DiscoveryURL: "https://auth.example.com/.well-known/openid-configuration"},
-    jwks.WithFetchInterval(12 * time.Hour),
-    jwks.WithAllowedJWKSHosts([]string{"auth.example.com"}),
-    jwks.WithMaxKeysCount(50),
+    jwks.WithFetchInterval(12 * time.Hour),                      // Override refresh interval (default: 24h)
+    jwks.WithAllowedJWKSHosts([]string{"auth.example.com"}),     // Restrict JWKS to specific hosts
+    jwks.WithMicrosoftHosts(),                                   // Preset for Microsoft Entra ID hosts
+    jwks.WithRequireHTTPS(false),                                // Allow HTTP (default: true)
+    jwks.WithTLSConfig(customTLSConfig),                         // Custom TLS configuration
+    jwks.WithMaxResponseSize(512 * 1024),                        // Limit response size (default: 1MB)
+    jwks.WithMaxKeysCount(50),                                   // Limit key count (default: 100)
+)
+```
+
+## Validator Options
+
+The validator uses smart defaults (issuer from discovery, RS256 signing). Override when needed:
+
+```go
+validator, err := fetcher.NewJWTValidator("api://my-app",
+    jwks.WithIssuers("https://custom-issuer"),       // Override discovery issuer
+    jwks.WithAdditionalAudiences("api://other"),    // Add more audiences
+    jwks.WithValidMethods("RS384"),                 // Override signing methods
 )
 ```
 
@@ -66,11 +67,6 @@ fetcher, err := jwks.NewJWKSFetcher(
 
 This library implements several security best practices by default:
 
-### Secure Defaults
-- **HTTPS Required**: By default, only HTTPS URLs are accepted for JWKS endpoints. This can be disabled for testing/internal environments using `WithRequireHTTPS(false)`
-- **TLS 1.2+**: Minimum TLS version 1.2 is enforced for all HTTPS connections
-- **Response Size Limits**: JWKS responses are limited to 1MB by default to prevent memory exhaustion attacks
-- **Key Count Limits**: Maximum of 100 keys per JWKS to prevent resource exhaustion
 
 ### Host Allowlisting
 Protect against SSRF attacks by restricting which hosts can serve JWKS:
@@ -89,46 +85,32 @@ fetcher, err := jwks.NewJWKSFetcher(
 )
 ```
 
-### Key Usage Validation
-The library validates the `use` claim in JWT keys according to RFC 7517:
-- Keys marked with `use: "enc"` (encryption) are rejected for signature verification
-- Only keys with `use: "sig"` or no `use` field are accepted for JWT validation
-- This prevents misuse of encryption keys for signing operations
+### Secure Defaults
+- **HTTPS Required**: By default, only HTTPS URLs are accepted for JWKS endpoints. This can be disabled for testing/internal environments using `WithRequireHTTPS(false)`
+- **TLS 1.2+**: Minimum TLS version 1.2 is enforced for all HTTPS connections
+- **Response Size Limits**: JWKS responses are limited to 1MB by default to prevent memory exhaustion attacks
+- **Key Count Limits**: Maximum of 100 keys per JWKS to prevent resource exhaustion
 
-## Key fetching/synchronization
-In the oauth2 protocol, the client will receive an access token signed
-by an authorization server. This token can then be included in the request header sent to the server.
-When the server receives this request, it needs to verify its signature using the public key from the authorization server.
-These keys are rotated often, and such the server must reach out the authorization server
-periodically to refresh its local key store. This synchronization is handled by the JWTFetcher running in the background.
 
-<img src="docs/jwks-go.png" alt="flow" width="500">
+## How It Works
 
-## JWT validation
-To start validating JWTs, create a JWTValidator instance with the NewJWTValidator function.
-This object holds the in-memory store of JWKS from the fetcher, allowed audiences and valid signing methods specified by the user.
+1. **Fetcher** retrieves public keys from the OIDC discovery endpoint and refreshes them periodically (default: 24h)
+2. **Validator** uses these keys to verify JWT signatures and validate claims (issuer, audience, expiry)
+3. **Middleware** extracts the Bearer token from `Authorization` header and validates it
 
-Passing this validator to the JWTMiddleware function returns a http.HandlerFunc middleware ready to authenticate incoming requests.
-The middleware expects a "Authorization: Bearer \<token>" jwt header.
+## Standalone Validation
 
-## Standalone validation
-If validating JWTs not part of HTTP headers, the core validation function used in the middleware comes in handy.
-The `ValidateJWT()` function is exported through the `JWTValidator` struct and offers standalone validation.
+For validating JWTs outside of HTTP handlers:
 
 ```go
-// Validate a JWT from any source (not just HTTP headers)
 claims, err := validator.ValidateJWT(ctx, tokenString)
 if err != nil {
-    // Check for specific error types
     if errors.Is(err, jwks.ErrInvalidAud) {
-        log.Println("token has invalid audience")
+        // Handle invalid audience
     }
-    log.Printf("validation failed: %v", err)
-    return
+    return err
 }
-
-// Access validated claims
-fmt.Printf("User: %s, Email: %s\n", claims.Subject, claims.Email)
+fmt.Printf("User: %s\n", claims.Email)
 ```
 
-The function returns `ErrInvalidAud` when audience validation fails, allowing for specific error handling with `errors.Is()`.
+**Error types:** `ErrInvalidToken`, `ErrInvalidAud`, `ErrInvalidIss`

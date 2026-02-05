@@ -8,9 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	jwks "github.com/intility/go-jwks"
-
 	"github.com/golang-jwt/jwt/v5"
+	jwks "github.com/intility/go-jwks"
 )
 
 // MyClaims defines custom claims for your application.
@@ -38,17 +37,14 @@ func main() {
 		return
 	}
 
-	audiences := []string{"api://YOUR_API_CLIENT_ID"}
-	validMethods := []string{jwt.SigningMethodRS256.Alg()}
-	issuer := "https://auth.example.com"
-
 	// Use NewJWTValidatorWithClaims to specify your custom claims type.
 	// The factory function must return a pointer type for JSON decoding.
+	// - audience is required (second parameter)
+	// - issuer defaults to discovery document (override with WithIssuers for multi-tenant)
+	// - signing methods default to RS256 (override with WithValidMethods)
 	validator, err := jwks.NewJWTValidatorWithClaims(
 		fetcher,
-		issuer,
-		audiences,
-		validMethods,
+		"api://YOUR_API_CLIENT_ID",
 		func() *MyClaims { return &MyClaims{} },
 	)
 	if err != nil {

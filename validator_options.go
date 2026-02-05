@@ -12,7 +12,7 @@ type ValidatorOptionFunc func(*ValidatorOptions) error
 
 // WithIssuers sets any number of allowed issuers.
 // Must be used for multi-tenant applications.
-// Default is inferred from fetched discovery document
+// Default is inferred from fetched discovery document.
 func WithIssuers(issuers ...string) ValidatorOptionFunc {
 	return func(o *ValidatorOptions) error {
 		if len(issuers) == 0 {

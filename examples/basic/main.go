@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	jwks "github.com/intility/go-jwks"
-
 )
 
 func main() {

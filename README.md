@@ -36,26 +36,18 @@ See the [examples](./examples) folder for complete runnable examples:
 
 ## Fetcher Options
 
-The `JWKSFetcher` can be configured using functional options to customize its behavior:
+The fetcher uses secure defaults (HTTPS required, TLS 1.2+, 24h refresh). Override when needed:
 
-### Security Options
-- `WithRequireHTTPS(bool)` - Enforce HTTPS for JWKS endpoints (default: true)
-- `WithAllowedJWKSHosts([]string)` - Restrict JWKS fetching to specific hosts
-- `WithMicrosoftHosts()` - Preset configuration for Microsoft Entra ID hosts
-- `WithTLSConfig(*tls.Config)` - Custom TLS configuration for JWKS requests
-
-### Performance Options
-- `WithFetchInterval(time.Duration)` - Set the interval for refreshing JWKS (default: 24 hours)
-- `WithMaxResponseSize(int64)` - Limit JWKS response size (default: 1MB)
-- `WithMaxKeysCount(int)` - Limit the number of keys in JWKS (default: 100)
-
-### Example with Options
 ```go
 fetcher, err := jwks.NewJWKSFetcher(
     jwks.Generic{DiscoveryURL: "https://auth.example.com/.well-known/openid-configuration"},
-    jwks.WithFetchInterval(12 * time.Hour),
-    jwks.WithAllowedJWKSHosts([]string{"auth.example.com"}),
-    jwks.WithMaxKeysCount(50),
+    jwks.WithFetchInterval(12 * time.Hour),                      // Override refresh interval (default: 24h)
+    jwks.WithAllowedJWKSHosts([]string{"auth.example.com"}),     // Restrict JWKS to specific hosts
+    jwks.WithMicrosoftHosts(),                                   // Preset for Microsoft Entra ID hosts
+    jwks.WithRequireHTTPS(false),                                // Allow HTTP (default: true)
+    jwks.WithTLSConfig(customTLSConfig),                         // Custom TLS configuration
+    jwks.WithMaxResponseSize(512 * 1024),                        // Limit response size (default: 1MB)
+    jwks.WithMaxKeysCount(50),                                   // Limit key count (default: 100)
 )
 ```
 

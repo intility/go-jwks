@@ -1,20 +1,13 @@
 # Go JWKS Fetcher and JWT Validator
 
-A go package for fetching JSON Web Key Sets (JWKS) and validating 
-JSON Web Tokens (JWTs) using these keys. It includes HTTP middleware for integration 
-with web services.
+ A Go library for JWT validation with automatic JWKS fetching and key rotation. Includes HTTP middleware.
 
 ## Features
-*   **JWKS Fetching:** Retrieves JWKS from a specified discovery URL (e.g. Microsoft Entra ID discovery endpoint).
-*   **Automatic Key Rotation:** Periodically fetches the JWKS endpoint to ensure keys are up-to-date.
-*   **JWT Validation:**
-    *   Verifies the JWT signature using the public key corresponding to the `kid` (Key ID) in the token header.
-    *   Validates the `alg` (algorithm) used for signing against a configurable list.
-    *   Validates the `aud` (audience) claim against a configurable list of allowed audiences.
-    *   Validates the `iss` (issuer) against the configured issuer. 
-*   **HTTP Middleware:** Provides standard Go `http.Handler` middleware to protect endpoints.
-*   **Standalone JWT validator:** Validate any JWT directly.
-*   **RSA Support:** Currently supports JWTs signed with RSA algorithms. 
+
+- **Minimal Config** — Get up and running with just your audience + tenant ID or genric discovery endpoint
+- **OIDC Discovery** — Fetches JWKS URI and issuer from discovery endpoints
+- **HTTP Middleware** — Drop-in `http.Handler` middleware for protected routes
+- **Generic OIDC** — Works with Auth0, Okta, Keycloak, or any OIDC provider 
 
 ## Installation
 ```bash

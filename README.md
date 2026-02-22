@@ -113,3 +113,7 @@ fmt.Printf("User: %s\n", claims.Email)
 ```
 
 **Error types:** `ErrInvalidToken`, `ErrInvalidAud`, `ErrInvalidIss`
+
+## Current limitations
+
+Currently only RSA based encryption algorithms are supported.

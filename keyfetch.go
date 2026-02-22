@@ -107,7 +107,7 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 	}
 
 	httpClient := &http.Client{
-		Timeout: defaultTimeout,
+		Timeout: opts.timeout,
 		Transport: &http.Transport{
 			MaxIdleConns:        opts.httpClientMaxIdleCon,
 			IdleConnTimeout:     opts.httpClientIdleConnTimeout,
@@ -279,7 +279,7 @@ func fetchDiscoveryDocument(ctx context.Context, discoveryURL string, client *ht
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OIDC discovery request to %s returned non 200 status: %w", discoveryURL, err)
+		return nil, fmt.Errorf("OIDC discovery request to %s returned non 200 status: %s", discoveryURL, resp.Status)
 	}
 
 	discoveryDoc := &discoveryDocument{}

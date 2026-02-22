@@ -67,6 +67,9 @@ func WithHTTPClientMaxIdleConns(n int) Option {
 }
 
 // WithLogger lets you override the standard logger.
+// The standard logger has log level Info and the attribute (pkg: jwks)
+// Using a logger with log level debug will result in logging from
+// keyfetching and validation operations.
 func WithLogger(logger *slog.Logger) Option {
 	return func(o *JWKSFetcherOpts) error {
 		o.logger = logger

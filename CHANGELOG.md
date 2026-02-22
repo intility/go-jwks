@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/intility/go-jwks/compare/v1.11.0...v1.11.1) (2026-02-22)
+
+
+### Bug Fixes
+
+* timeout option ([#53](https://github.com/intility/go-jwks/issues/53)) ([4ead1b6](https://github.com/intility/go-jwks/commit/4ead1b6ffd40f50b956e07d71b0fb350314f7c92))
+
 ## [1.11.0](https://github.com/intility/go-jwks/compare/v1.10.0...v1.11.0) (2026-02-05)
 
 

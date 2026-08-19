@@ -256,7 +256,8 @@ func (v *JWTValidator[T]) ValidateJWT(ctx context.Context, tokenStr string) (T, 
 	claims := v.newClaims()
 	// Parse and validate token.
 	token, err := jwt.ParseWithClaims(tokenStr, claims, v.keyFunc,
-		jwt.WithValidMethods(v.validMethods))
+		jwt.WithValidMethods(v.validMethods),
+		jwt.WithExpirationRequired())
 	if err != nil {
 		msg := "failed to parse jwt token with claims"
 		v.logger.ErrorContext(ctx, msg, "error", err)

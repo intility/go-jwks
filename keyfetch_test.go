@@ -1124,3 +1124,52 @@ func TestJWKSLimits(t *testing.T) {
 		})
 	}
 }
+
+// TestRedirectToDisallowedHostRefused tests that host allowlisting is enforced
+// on redirects, not just on the initial URL.
+func TestRedirectToDisallowedHostRefused(t *testing.T) {
+	// External server the redirect points to (not in the allowlist)
+	external := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		discovery := map[string]string{"jwks_uri": "http://" + r.Host + "/jwks"}
+		_ = json.NewEncoder(w).Encode(discovery)
+	}))
+	defer external.Close()
+
+	// Server that redirects the discovery request to the external server.
+	// Both test servers resolve to 127.0.0.1, so the allowlist uses a name
+	// that matches neither — only the redirect check should trip, since the
+	// allowlist is not applied to the initial user-provided discovery URL.
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, external.URL+openIDConfigurationPath, http.StatusFound)
+	}))
+	defer redirecting.Close()
+
+	_, err := NewJWKSFetcher(
+		Generic{DiscoveryURL: redirecting.URL + openIDConfigurationPath},
+		WithRequireHTTPS(false),
+		WithAllowedJWKSHosts([]string{"allowed.example.com"}),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "redirect to disallowed host")
+}
+
+// TestDiscoveryResponseSizeLimit tests that the discovery document fetch
+// enforces the configured max response size.
+func TestDiscoveryResponseSizeLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		discovery := map[string]string{
+			"jwks_uri": "http://" + r.Host + "/jwks",
+			"padding":  strings.Repeat("A", 10000),
+		}
+		_ = json.NewEncoder(w).Encode(discovery)
+	}))
+	defer server.Close()
+
+	_, err := NewJWKSFetcher(
+		Generic{DiscoveryURL: server.URL + openIDConfigurationPath},
+		WithRequireHTTPS(false),
+		WithMaxResponseSize(100),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to decode OIDC discovery JSON")
+}

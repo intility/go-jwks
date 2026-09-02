@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.12.0](https://github.com/intility/go-jwks/compare/v1.11.1...v1.12.0) (2026-09-02)
+
+
+### Bug Fixes
+
+* various security improvements ([#55](https://github.com/intility/go-jwks/issues/55)) ([c30e2d8](https://github.com/intility/go-jwks/commit/c30e2d85a99a4998f63dd30152608839fedae999))
+
+
+### Miscellaneous Chores
+
+* release 1.12.0 ([0dce57a](https://github.com/intility/go-jwks/commit/0dce57a04b0491690425beb0fd2ca957d9dc7650))
+
 ## [1.11.1](https://github.com/intility/go-jwks/compare/v1.11.0...v1.11.1) (2026-02-22)
 
 

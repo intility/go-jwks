@@ -80,7 +80,7 @@ func TestJWTMiddleware(t *testing.T) {
 		Keys: []JSONWebKey{
 			{
 				Kid: kid,
-				Kty: "RSA",
+				Kty: keyTypeRSA,
 				// X5c: []string{certX5C}, // Use the base64 encoded certificate DER
 				E: eBase64URL,
 				// N: "iQ745_U-vjkxPblaw6phBpe08fC42mpcrS4pcr15HiyZQyQV-BFcEVyLwPdsz3ulMRN7OB_UMfCcPBHqOjguejoab6hyJFVVMw_epP4a3SpQN9qaCbnqaSxgSGiqSq663g3TjsF_Wu1m9L41eNoF6Yvh5kULMd6lqjY0LPO5ZZxaQFLtIHahoJKMvYy1BTS0VYcNsXTjxkgUEL6Vc8GV5vaClbnY3VA2hLbXC1SGJWjVGdYXhkuck2tHr58u87MPEaQ33C6YfyISZKsdumF5bTCcIH75jjC3WbMVOLgWg5w0MSiHOFyI76Ihxbb0nRicEuao0WzO9AS7HJ7L24FHFQ",
@@ -196,7 +196,7 @@ func TestJWTMiddleware(t *testing.T) {
 				Keys: []JSONWebKey{
 					{
 						Kid: kid,
-						Kty: "RSA",
+						Kty: keyTypeRSA,
 						Use: "enc", // Encryption key - should be rejected for signing
 						E:   eBase64URL,
 						N:   nBase64URL,
@@ -235,8 +235,8 @@ func TestJWTMiddleware(t *testing.T) {
 				Keys: []JSONWebKey{
 					{
 						Kid: kid,
-						Kty: "RSA",
-						Use: "sig", // Signature key - should be accepted
+						Kty: keyTypeRSA,
+						Use: keyUseSig, // Signature key - should be accepted
 						E:   eBase64URL,
 						N:   nBase64URL,
 					},

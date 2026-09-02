@@ -22,6 +22,8 @@ const (
 	defaultTimeout                       = 60 * time.Second
 	defaultMaxResponseSize               = 1 * 1024 * 1024 // 1MB - typical JWKS are <10KB
 	defaultMaxKeysCount                  = 100             // Most providers have <10 keys
+
+	schemeHTTPS = "https"
 )
 
 type discoveryDocument struct {
@@ -114,6 +116,22 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 			TLSHandshakeTimeout: opts.tlsHandshakeTimeout,
 			TLSClientConfig:     opts.tlsConfig,
 		},
+		// Re-validate scheme and host on every redirect hop: the checks on the
+		// initial discovery/JWKS URLs would otherwise be bypassable via a 3xx
+		// to an http:// URL or a host outside the allowlist.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if opts.requireHTTPS && req.URL.Scheme != schemeHTTPS {
+				return fmt.Errorf("redirect to non-HTTPS URL '%s' refused", req.URL)
+			}
+			// skip validation if no allowed host is set, otherwise check if redirect URL is in list.
+			if len(opts.allowedJWKSHosts) > 0 && !slices.Contains(opts.allowedJWKSHosts, req.URL.Hostname()) {
+				return fmt.Errorf("redirect to disallowed host '%s' refused", req.URL.Hostname())
+			}
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			return nil
+		},
 	}
 
 	discoveryURL, err := source.getDiscoveryEndpoint()
@@ -121,7 +139,7 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 		return nil, fmt.Errorf("failed to set discovery url: %w", err)
 	}
 
-	discoveryDocument, err := fetchDiscoveryDocument(context.Background(), discoveryURL, httpClient, opts.requireHTTPS, opts.allowedJWKSHosts)
+	discoveryDocument, err := fetchDiscoveryDocument(context.Background(), discoveryURL, httpClient, opts.requireHTTPS, opts.allowedJWKSHosts, opts.maxResponseSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch JWKS URL from discoveryURL '%s': %w", discoveryURL, err)
 	}
@@ -251,7 +269,14 @@ func validateHost(urlStr string, allowedHosts []string, urlType string) error {
 }
 
 // Gets the JWKS URL from the OIDC discovery document.
-func fetchDiscoveryDocument(ctx context.Context, discoveryURL string, client *http.Client, requireHTTPS bool, allowedHosts []string) (*discoveryDocument, error) {
+func fetchDiscoveryDocument(
+	ctx context.Context,
+	discoveryURL string,
+	client *http.Client,
+	requireHTTPS bool,
+	allowedHosts []string,
+	maxResponseSize int64,
+) (*discoveryDocument, error) {
 	if discoveryURL == "" {
 		return nil, fmt.Errorf("discovery url can not be empty")
 	}
@@ -262,7 +287,7 @@ func fetchDiscoveryDocument(ctx context.Context, discoveryURL string, client *ht
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse discovery URL: %w", err)
 		}
-		if discoveryParsed.Scheme != "https" {
+		if discoveryParsed.Scheme != schemeHTTPS {
 			return nil, fmt.Errorf("discovery URL must use HTTPS, got scheme: %s (use WithRequireHTTPS(false) to allow HTTP in secure environments)", discoveryParsed.Scheme)
 		}
 	}
@@ -282,8 +307,11 @@ func fetchDiscoveryDocument(ctx context.Context, discoveryURL string, client *ht
 		return nil, fmt.Errorf("OIDC discovery request to %s returned non 200 status: %s", discoveryURL, resp.Status)
 	}
 
+	// Limit the response body size to prevent memory exhaustion
+	limitedReader := io.LimitReader(resp.Body, maxResponseSize)
+
 	discoveryDoc := &discoveryDocument{}
-	if err := json.NewDecoder(resp.Body).Decode(discoveryDoc); err != nil {
+	if err := json.NewDecoder(limitedReader).Decode(discoveryDoc); err != nil {
 		return nil, fmt.Errorf("failed to decode OIDC discovery JSON from %s: %w", discoveryURL, err)
 	}
 
@@ -302,7 +330,7 @@ func fetchDiscoveryDocument(ctx context.Context, discoveryURL string, client *ht
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse JWKS URL from discovery document: %w", err)
 		}
-		if jwksParsed.Scheme != "https" {
+		if jwksParsed.Scheme != schemeHTTPS {
 			return nil, fmt.Errorf("JWKS URL must use HTTPS for security, got: %s (use WithRequireHTTPS(false) to allow HTTP in secure environments)", discoveryDoc.JwksURI)
 		}
 	}

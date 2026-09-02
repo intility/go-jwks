@@ -123,6 +123,7 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 			if opts.requireHTTPS && req.URL.Scheme != schemeHTTPS {
 				return fmt.Errorf("redirect to non-HTTPS URL '%s' refused", req.URL)
 			}
+			// skip validation if no allowed host is set, otherwise check if redirect URL is in list.
 			if len(opts.allowedJWKSHosts) > 0 && !slices.Contains(opts.allowedJWKSHosts, req.URL.Hostname()) {
 				return fmt.Errorf("redirect to disallowed host '%s' refused", req.URL.Hostname())
 			}
@@ -268,7 +269,14 @@ func validateHost(urlStr string, allowedHosts []string, urlType string) error {
 }
 
 // Gets the JWKS URL from the OIDC discovery document.
-func fetchDiscoveryDocument(ctx context.Context, discoveryURL string, client *http.Client, requireHTTPS bool, allowedHosts []string, maxResponseSize int64) (*discoveryDocument, error) {
+func fetchDiscoveryDocument(
+	ctx context.Context,
+	discoveryURL string,
+	client *http.Client,
+	requireHTTPS bool,
+	allowedHosts []string,
+	maxResponseSize int64,
+) (*discoveryDocument, error) {
 	if discoveryURL == "" {
 		return nil, fmt.Errorf("discovery url can not be empty")
 	}

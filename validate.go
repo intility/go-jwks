@@ -24,6 +24,10 @@ var (
 const (
 	BearerSchema   = "Bearer"
 	authHeaderPart = 2
+
+	// JWK field values per RFC 7517.
+	keyTypeRSA = "RSA"
+	keyUseSig  = "sig"
 )
 
 type JWKS struct {
@@ -168,7 +172,7 @@ func JWTMiddleware[T jwt.Claims](validator *JWTValidator[T]) func(http.Handler) 
 // Parse JWK. Attempt both RSA and EC parsing. Return the constructed public key.
 func parseKey(jwk *JSONWebKey) (interface{}, error) {
 	switch jwk.Kty {
-	case "RSA":
+	case keyTypeRSA:
 		if jwk.N != "" && jwk.E != "" {
 			// Construct public key from RSA params.
 			nBytes, err := base64.RawURLEncoding.DecodeString(jwk.N)
@@ -229,7 +233,7 @@ func (v *JWTValidator[T]) createKeyFunc() jwt.Keyfunc {
 			if key.Kid == kid {
 				// Validate key usage - only allow keys with use:"sig" or no use specified
 				// Reject keys explicitly marked for encryption only (use:"enc")
-				if key.Use != "" && key.Use != "sig" {
+				if key.Use != "" && key.Use != keyUseSig {
 					v.logger.Error("key usage validation failed", "kid", kid, "use", key.Use)
 					return nil, fmt.Errorf("key %s has invalid use '%s' for signature verification", kid, key.Use)
 				}

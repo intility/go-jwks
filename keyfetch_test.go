@@ -34,6 +34,17 @@ const (
 	// URL paths.
 	jwksPath                = "/jwks"
 	openIDConfigurationPath = "/.well-known/openid-configuration"
+
+	// Discovery document fields.
+	jwksURIField = "jwks_uri"
+
+	// JWK placeholder values used across table tests.
+	testKid      = "test"
+	testExponent = "AQAB"
+	testModulus  = "test-n"
+
+	// Expected error substrings.
+	errDecodeJSON = "failed to decode json response"
 )
 
 // mockJWKSServer creates a test server that responds with discovery and JWKS endpoints.
@@ -72,8 +83,8 @@ func mockJWKSServer(t *testing.T, jwksResponses ...*JWKS) (*httptest.Server, fun
 		} else {
 			// Return discovery document for any other path
 			discovery := map[string]interface{}{
-				"jwks_uri": serverURL + "/jwks",
-				"issuer":   "http://example.com",
+				jwksURIField: serverURL + "/jwks",
+				"issuer":     "http://example.com",
 			}
 			if err := json.NewEncoder(w).Encode(discovery); err != nil {
 				http.Error(w, "Failed to encode discovery response", http.StatusInternalServerError)
@@ -180,8 +191,8 @@ func mockSlowJWKSServer(t *testing.T, delay time.Duration, jwks *JWKS) *httptest
 			}
 		} else {
 			discovery := map[string]interface{}{
-				"jwks_uri": serverURL + "/jwks",
-				"issuer":   "http://example.com",
+				jwksURIField: serverURL + "/jwks",
+				"issuer":     "http://example.com",
 			}
 			if err := json.NewEncoder(w).Encode(discovery); err != nil {
 				http.Error(w, "Failed to encode discovery response", http.StatusInternalServerError)
@@ -307,8 +318,8 @@ func createTestJWKS(privateKey *rsa.PrivateKey, kid string) *JWKS {
 	return &JWKS{
 		Keys: []JSONWebKey{
 			{
-				Kty: "RSA",
-				Use: "sig",
+				Kty: keyTypeRSA,
+				Use: keyUseSig,
 				Kid: kid,
 				N:   n,
 				E:   e,
@@ -322,10 +333,10 @@ func TestMaxResponseSize(t *testing.T) {
 	// Create a large JWKS response that exceeds the limit
 	largeKey := JSONWebKey{
 		Kid: "test-key",
-		Kty: "RSA",
-		Use: "sig",
+		Kty: keyTypeRSA,
+		Use: keyUseSig,
 		N:   strings.Repeat("A", 10000), // Large N value to make response big
-		E:   "AQAB",
+		E:   testExponent,
 	}
 
 	largeJWKS := JWKS{
@@ -338,7 +349,7 @@ func TestMaxResponseSize(t *testing.T) {
 		switch r.URL.Path {
 		case openIDConfigurationPath:
 			discovery := map[string]string{
-				"jwks_uri": serverURL + "/jwks",
+				jwksURIField: serverURL + "/jwks",
 			}
 			if err := json.NewEncoder(w).Encode(discovery); err != nil {
 				http.Error(w, "Failed to encode discovery response", http.StatusInternalServerError)
@@ -366,7 +377,7 @@ func TestMaxResponseSize(t *testing.T) {
 	// Try to fetch - should fail due to size limit
 	jwks, err := fetcher.fetchRemoteJWKS(context.Background(), server.URL+"/jwks")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to decode json response")
+	assert.Contains(t, err.Error(), errDecodeJSON)
 	assert.Empty(t, jwks.Keys)
 }
 
@@ -377,10 +388,10 @@ func TestMaxKeysCount(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		keys = append(keys, JSONWebKey{
 			Kid: fmt.Sprintf("key-%d", i),
-			Kty: "RSA",
-			Use: "sig",
-			N:   "test-n",
-			E:   "AQAB",
+			Kty: keyTypeRSA,
+			Use: keyUseSig,
+			N:   testModulus,
+			E:   testExponent,
 		})
 	}
 
@@ -392,7 +403,7 @@ func TestMaxKeysCount(t *testing.T) {
 		switch r.URL.Path {
 		case openIDConfigurationPath:
 			discovery := map[string]string{
-				"jwks_uri": serverURL + "/jwks",
+				jwksURIField: serverURL + "/jwks",
 			}
 			if err := json.NewEncoder(w).Encode(discovery); err != nil {
 				http.Error(w, "Failed to encode discovery response", http.StatusInternalServerError)
@@ -437,7 +448,7 @@ func TestJWKSHostValidation(t *testing.T) {
 			case "/.well-known/openid-configuration":
 				// Return discovery doc with JWKS URL
 				discovery := map[string]string{
-					"jwks_uri": serverURL + "/jwks",
+					jwksURIField: serverURL + "/jwks",
 				}
 				w.Header().Set("Content-Type", "application/json")
 				if err := json.NewEncoder(w).Encode(discovery); err != nil {
@@ -468,7 +479,7 @@ func TestJWKSHostValidation(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Return discovery doc with external JWKS URL
 			discovery := map[string]string{
-				"jwks_uri": "http://evil.com/jwks",
+				jwksURIField: "http://evil.com/jwks",
 			}
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(discovery); err != nil {
@@ -495,7 +506,7 @@ func TestJWKSHostValidation(t *testing.T) {
 			case "/.well-known/openid-configuration":
 				// Return discovery doc with JWKS URL using same host
 				discovery := map[string]string{
-					"jwks_uri": serverURL + "/jwks",
+					jwksURIField: serverURL + "/jwks",
 				}
 				w.Header().Set("Content-Type", "application/json")
 				if err := json.NewEncoder(w).Encode(discovery); err != nil {
@@ -552,17 +563,17 @@ func TestMalformedJWKSResponses(t *testing.T) {
 		{
 			name:          "completely invalid JSON",
 			jwksResponse:  `{invalid json`,
-			expectedError: "failed to decode json response",
+			expectedError: errDecodeJSON,
 		},
 		{
 			name:          "truncated JSON",
 			jwksResponse:  `{"keys": [`,
-			expectedError: "failed to decode json response",
+			expectedError: errDecodeJSON,
 		},
 		{
 			name:          "keys field is not an array",
 			jwksResponse:  `{"keys": "not-an-array"}`,
-			expectedError: "failed to decode json response",
+			expectedError: errDecodeJSON,
 		},
 		// Missing required fields
 		{
@@ -632,10 +643,10 @@ func TestMalformedJWKSResponses(t *testing.T) {
 				switch r.URL.Path {
 				case openIDConfigurationPath:
 					discovery := map[string]string{
-						"jwks_uri": r.Host + "/jwks",
+						jwksURIField: r.Host + "/jwks",
 					}
 					if !strings.HasPrefix(r.Host, "http") {
-						discovery["jwks_uri"] = "http://" + discovery["jwks_uri"]
+						discovery[jwksURIField] = "http://" + discovery[jwksURIField]
 					}
 					w.Header().Set("Content-Type", "application/json")
 					if err := json.NewEncoder(w).Encode(discovery); err != nil {
@@ -735,47 +746,47 @@ func TestParseKeyEdgeCases(t *testing.T) {
 		{
 			name: "valid RSA key",
 			key: JSONWebKey{
-				Kid: "test",
-				Kty: "RSA",
-				N:   "AQAB",
-				E:   "AQAB",
+				Kid: testKid,
+				Kty: keyTypeRSA,
+				N:   testExponent,
+				E:   testExponent,
 			},
 			expectedError: "",
 		},
 		{
 			name: "missing N parameter",
 			key: JSONWebKey{
-				Kid: "test",
-				Kty: "RSA",
-				E:   "AQAB",
+				Kid: testKid,
+				Kty: keyTypeRSA,
+				E:   testExponent,
 			},
 			expectedError: "missing N and/or E param",
 		},
 		{
 			name: "missing E parameter",
 			key: JSONWebKey{
-				Kid: "test",
-				Kty: "RSA",
-				N:   "AQAB",
+				Kid: testKid,
+				Kty: keyTypeRSA,
+				N:   testExponent,
 			},
 			expectedError: "missing N and/or E param",
 		},
 		{
 			name: "invalid base64 in N",
 			key: JSONWebKey{
-				Kid: "test",
-				Kty: "RSA",
+				Kid: testKid,
+				Kty: keyTypeRSA,
 				N:   "!!!invalid!!!",
-				E:   "AQAB",
+				E:   testExponent,
 			},
 			expectedError: "failed to decode RSA modulus 'n'",
 		},
 		{
 			name: "invalid base64 in E",
 			key: JSONWebKey{
-				Kid: "test",
-				Kty: "RSA",
-				N:   "AQAB",
+				Kid: testKid,
+				Kty: keyTypeRSA,
+				N:   testExponent,
 				E:   "!!!invalid!!!",
 			},
 			expectedError: "failed to decode RSA modulus 'e'",
@@ -783,19 +794,19 @@ func TestParseKeyEdgeCases(t *testing.T) {
 		{
 			name: "zero value modulus",
 			key: JSONWebKey{
-				Kid: "test",
-				Kty: "RSA",
+				Kid: testKid,
+				Kty: keyTypeRSA,
 				N:   "AA", // Base64 of 0
-				E:   "AQAB",
+				E:   testExponent,
 			},
 			expectedError: "RSA modulus or exponent resulted in zero value",
 		},
 		{
 			name: "zero value exponent",
 			key: JSONWebKey{
-				Kid: "test",
-				Kty: "RSA",
-				N:   "AQAB",
+				Kid: testKid,
+				Kty: keyTypeRSA,
+				N:   testExponent,
 				E:   "AA", // Base64 of 0
 			},
 			expectedError: "RSA modulus or exponent resulted in zero value",
@@ -803,9 +814,9 @@ func TestParseKeyEdgeCases(t *testing.T) {
 		{
 			name: "exponent too large for int64",
 			key: JSONWebKey{
-				Kid: "test",
-				Kty: "RSA",
-				N:   "AQAB",
+				Kid: testKid,
+				Kty: keyTypeRSA,
+				N:   testExponent,
 				// This creates a number larger than MaxInt64
 				E: base64.RawURLEncoding.EncodeToString([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}),
 			},
@@ -814,7 +825,7 @@ func TestParseKeyEdgeCases(t *testing.T) {
 		{
 			name: "unsupported EC key type",
 			key: JSONWebKey{
-				Kid: "test",
+				Kid: testKid,
 				Kty: "EC",
 			},
 			expectedError: "EC not yet supported",
@@ -822,7 +833,7 @@ func TestParseKeyEdgeCases(t *testing.T) {
 		{
 			name: "unknown key type",
 			key: JSONWebKey{
-				Kid: "test",
+				Kid: testKid,
 				Kty: "UNKNOWN",
 			},
 			expectedError: "method not supported",
@@ -862,54 +873,54 @@ func TestMixedValidInvalidKeys(t *testing.T) {
 			// Valid key 1
 			{
 				Kid: "valid-key-1",
-				Kty: "RSA",
+				Kty: keyTypeRSA,
 				N:   validN,
 				E:   validE,
-				Use: "sig",
+				Use: keyUseSig,
 			},
 			// Invalid: missing N parameter
 			{
 				Kid: "invalid-missing-n",
-				Kty: "RSA",
+				Kty: keyTypeRSA,
 				E:   validE,
-				Use: "sig",
+				Use: keyUseSig,
 			},
 			// Invalid: invalid base64 in E
 			{
 				Kid: "invalid-base64",
-				Kty: "RSA",
+				Kty: keyTypeRSA,
 				N:   validN,
 				E:   "!!!invalid-base64!!!",
-				Use: "sig",
+				Use: keyUseSig,
 			},
 			// Valid key 2
 			{
 				Kid: "valid-key-2",
-				Kty: "RSA",
+				Kty: keyTypeRSA,
 				N:   validN,
 				E:   validE,
-				Use: "sig",
+				Use: keyUseSig,
 			},
 			// Invalid: unsupported EC key
 			{
 				Kid: "invalid-ec",
 				Kty: "EC",
 				Crv: "P-256",
-				X:   "test",
-				Y:   "test",
+				X:   testKid,
+				Y:   testKid,
 			},
 			// Invalid: zero value modulus
 			{
 				Kid: "invalid-zero-modulus",
-				Kty: "RSA",
+				Kty: keyTypeRSA,
 				N:   "AA", // Base64 of 0
 				E:   validE,
-				Use: "sig",
+				Use: keyUseSig,
 			},
 			// Valid key 3 without 'use' field (should be accepted)
 			{
 				Kid: "valid-key-3-no-use",
-				Kty: "RSA",
+				Kty: keyTypeRSA,
 				N:   validN,
 				E:   validE,
 			},
@@ -921,10 +932,10 @@ func TestMixedValidInvalidKeys(t *testing.T) {
 		switch r.URL.Path {
 		case openIDConfigurationPath:
 			discovery := map[string]string{
-				"jwks_uri": r.Host + jwksPath,
+				jwksURIField: r.Host + jwksPath,
 			}
 			if !strings.HasPrefix(r.Host, "http") {
-				discovery["jwks_uri"] = "http://" + discovery["jwks_uri"]
+				discovery[jwksURIField] = "http://" + discovery[jwksURIField]
 			}
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(discovery); err != nil {
@@ -1027,10 +1038,10 @@ func TestJWKSLimits(t *testing.T) {
 				Keys: []JSONWebKey{
 					{
 						Kid: "key-1",
-						Kty: "RSA",
-						Use: "sig",
-						N:   "test-n",
-						E:   "AQAB",
+						Kty: keyTypeRSA,
+						Use: keyUseSig,
+						N:   testModulus,
+						E:   testExponent,
 					},
 				},
 			},
@@ -1046,17 +1057,17 @@ func TestJWKSLimits(t *testing.T) {
 				Keys: []JSONWebKey{
 					{
 						Kid: "key-1",
-						Kty: "RSA",
-						Use: "sig",
-						N:   "test-n",
-						E:   "AQAB",
+						Kty: keyTypeRSA,
+						Use: keyUseSig,
+						N:   testModulus,
+						E:   testExponent,
 					},
 					{
 						Kid: "key-2",
-						Kty: "RSA",
-						Use: "sig",
+						Kty: keyTypeRSA,
+						Use: keyUseSig,
 						N:   "test-n-2",
-						E:   "AQAB",
+						E:   testExponent,
 					},
 				},
 			},
@@ -1079,7 +1090,7 @@ func TestJWKSLimits(t *testing.T) {
 				switch r.URL.Path {
 				case openIDConfigurationPath:
 					discovery := map[string]string{
-						"jwks_uri": serverURL + "/jwks",
+						jwksURIField: serverURL + "/jwks",
 					}
 					if err := json.NewEncoder(w).Encode(discovery); err != nil {
 						http.Error(w, "Failed to encode discovery response", http.StatusInternalServerError)
@@ -1130,7 +1141,7 @@ func TestJWKSLimits(t *testing.T) {
 func TestRedirectToDisallowedHostRefused(t *testing.T) {
 	// External server the redirect points to (not in the allowlist)
 	external := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		discovery := map[string]string{"jwks_uri": "http://" + r.Host + "/jwks"}
+		discovery := map[string]string{jwksURIField: "http://" + r.Host + "/jwks"}
 		_ = json.NewEncoder(w).Encode(discovery)
 	}))
 	defer external.Close()
@@ -1158,8 +1169,8 @@ func TestRedirectToDisallowedHostRefused(t *testing.T) {
 func TestDiscoveryResponseSizeLimit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		discovery := map[string]string{
-			"jwks_uri": "http://" + r.Host + "/jwks",
-			"padding":  strings.Repeat("A", 10000),
+			jwksURIField: "http://" + r.Host + "/jwks",
+			"padding":    strings.Repeat("A", 10000),
 		}
 		_ = json.NewEncoder(w).Encode(discovery)
 	}))

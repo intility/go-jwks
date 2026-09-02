@@ -22,6 +22,8 @@ const (
 	defaultTimeout                       = 60 * time.Second
 	defaultMaxResponseSize               = 1 * 1024 * 1024 // 1MB - typical JWKS are <10KB
 	defaultMaxKeysCount                  = 100             // Most providers have <10 keys
+
+	schemeHTTPS = "https"
 )
 
 type discoveryDocument struct {
@@ -118,7 +120,7 @@ func NewJWKSFetcher(source keySource, options ...Option) (*JWKSFetcher, error) {
 		// initial discovery/JWKS URLs would otherwise be bypassable via a 3xx
 		// to an http:// URL or a host outside the allowlist.
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if opts.requireHTTPS && req.URL.Scheme != "https" {
+			if opts.requireHTTPS && req.URL.Scheme != schemeHTTPS {
 				return fmt.Errorf("redirect to non-HTTPS URL '%s' refused", req.URL)
 			}
 			if len(opts.allowedJWKSHosts) > 0 && !slices.Contains(opts.allowedJWKSHosts, req.URL.Hostname()) {
@@ -277,7 +279,7 @@ func fetchDiscoveryDocument(ctx context.Context, discoveryURL string, client *ht
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse discovery URL: %w", err)
 		}
-		if discoveryParsed.Scheme != "https" {
+		if discoveryParsed.Scheme != schemeHTTPS {
 			return nil, fmt.Errorf("discovery URL must use HTTPS, got scheme: %s (use WithRequireHTTPS(false) to allow HTTP in secure environments)", discoveryParsed.Scheme)
 		}
 	}
@@ -320,7 +322,7 @@ func fetchDiscoveryDocument(ctx context.Context, discoveryURL string, client *ht
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse JWKS URL from discovery document: %w", err)
 		}
-		if jwksParsed.Scheme != "https" {
+		if jwksParsed.Scheme != schemeHTTPS {
 			return nil, fmt.Errorf("JWKS URL must use HTTPS for security, got: %s (use WithRequireHTTPS(false) to allow HTTP in secure environments)", discoveryDoc.JwksURI)
 		}
 	}

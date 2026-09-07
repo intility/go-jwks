@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/intility/go-jwks/compare/v1.12.0...v1.13.0) (2026-09-07)
+
+
+### Features
+
+* add custom validator option ([#58](https://github.com/intility/go-jwks/issues/58)) ([9303b1f](https://github.com/intility/go-jwks/commit/9303b1fc1b21c4b8b4fd1d4e9642ba003f157169))
+
 ## [1.12.0](https://github.com/intility/go-jwks/compare/v1.11.1...v1.12.0) (2026-09-02)
 
 

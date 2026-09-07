@@ -19,6 +19,7 @@ var (
 	ErrInvalidToken = errors.New("token is invalid")
 	ErrInvalidAud   = errors.New("audience is invalid")
 	ErrInvalidIss   = errors.New("invalid issuer")
+	ErrInvalidClaim = errors.New("invalid claim")
 )
 
 const (
@@ -62,6 +63,7 @@ type JWTValidator[T jwt.Claims] struct {
 	validIssuers []string
 	logger       *slog.Logger
 	keyFunc      jwt.Keyfunc
+	claimChecks  []func(context.Context, jwt.Claims) error
 }
 
 // NewJWTValidator creates a new JWTValidator.
@@ -79,6 +81,7 @@ type JWTValidator[T jwt.Claims] struct {
 //   - WithIssuers(issuers ...string) - Override the default issuer(s)
 //   - WithAdditionalAudiences(audiences ...string) - Add more valid audiences
 //   - WithValidMethods(methods ...string) - Override the default signing methods
+//   - WithClaimValidator(fn) - Add a custom check for non-standard claims
 func (f *JWKSFetcher) NewJWTValidator(audience string, options ...ValidatorOptionFunc) (*JWTValidator[*UserClaims], error) {
 	return NewJWTValidatorWithClaims(f, audience, func() *UserClaims { return &UserClaims{} }, options...)
 }
@@ -126,6 +129,7 @@ func NewJWTValidatorWithClaims[T jwt.Claims](
 		validMethods: opts.validMethods,
 		validIssuers: opts.issuers,
 		logger:       fetcher.logger,
+		claimChecks:  opts.claimChecks,
 	}
 
 	v.keyFunc = v.createKeyFunc()
@@ -296,6 +300,14 @@ func (v *JWTValidator[T]) ValidateJWT(ctx context.Context, tokenStr string) (T, 
 	if !isAudienceValid(aud, v.audiences) {
 		v.logger.ErrorContext(ctx, "token audience validation failed", "audiences", aud)
 		return claims, ErrInvalidAud
+	}
+
+	// Validate optional user specified claims.
+	for _, check := range v.claimChecks {
+		if err := check(ctx, claims); err != nil {
+			v.logger.ErrorContext(ctx, "custom claim validation failed", "error", err)
+			return claims, fmt.Errorf("%w: %w", ErrInvalidClaim, err)
+		}
 	}
 
 	return claims, nil

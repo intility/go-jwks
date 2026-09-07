@@ -17,6 +17,7 @@ import (
 type MyClaims struct {
 	TenantID   string   `json:"tenant_id"`
 	Roles      []string `json:"roles"`
+	Azp        string   `json:"azp"`
 	Department string   `json:"department,omitempty"`
 
 	jwt.RegisteredClaims
@@ -42,10 +43,16 @@ func main() {
 	// - audience is required (second parameter)
 	// - issuer defaults to discovery document (override with WithIssuers for multi-tenant)
 	// - signing methods default to RS256 (override with WithValidMethods)
+	//
+	// Claims outside the standard set (iss, aud, exp) are validated with
+	// WithClaimValidator. Each check receives the decoded *MyClaims and runs only
+	// after the signature, issuer, audience and expiry have been verified.
+	// Checks run in registration order and the first error rejects the token.
 	validator, err := jwks.NewJWTValidatorWithClaims(
 		fetcher,
 		"api://YOUR_API_CLIENT_ID",
 		func() *MyClaims { return &MyClaims{} },
+		jwks.WithClaimValidator(validateAzp),
 	)
 	if err != nil {
 		slog.Error("failed to create JWT validator", "error", err)
@@ -61,6 +68,16 @@ func main() {
 	if err := http.ListenAndServe(":8080", mux); err != nil {
 		slog.Error("Server failed", "error", err)
 	}
+}
+
+// validateAzp checks the "azp" claim, which identifies the
+// client application the token was issued to.
+func validateAzp(_ context.Context, claims *MyClaims) error {
+	if claims.Azp != "YOUR_CLIENT_ID" {
+		return fmt.Errorf("azp %q is not an allowed client", claims.Azp)
+	}
+
+	return nil
 }
 
 func profileHandler(w http.ResponseWriter, r *http.Request) {

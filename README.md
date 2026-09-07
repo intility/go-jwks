@@ -59,8 +59,26 @@ validator, err := fetcher.NewJWTValidator("api://my-app",
     jwks.WithIssuers("https://custom-issuer"),       // Override discovery issuer
     jwks.WithAdditionalAudiences("api://other"),    // Add more audiences
     jwks.WithValidMethods("RS384"),                 // Override signing methods
+    jwks.WithClaimValidator(checkEmailDomain),      // Custom check for non-standard claims
 )
 ```
+
+### Custom Claim Validation
+
+`WithClaimValidator` registers a type-safe check that runs after the signature, issuer, audience and
+expiry have been verified. Multiple checks run in registration order and the first error rejects the
+token, wrapped in `ErrInvalidClaim`.
+
+```go
+func checkEmailDomain(_ context.Context, c *jwks.UserClaims) error {
+    if !strings.HasSuffix(c.Email, "@example.com") {
+        return fmt.Errorf("email %q is not from an allowed domain", c.Email)
+    }
+    return nil
+}
+```
+
+See [examples/custom-claims](examples/custom-claims/main.go) for a complete example using a custom claims type.
 
 ## Security Features
 

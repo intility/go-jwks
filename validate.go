@@ -103,7 +103,6 @@ func NewJWTValidatorWithClaims[T jwt.Claims](
 		issuers:      []string{fetcher.issuer},
 		validMethods: []string{jwt.SigningMethodRS256.Alg()},
 		audiences:    []string{audience},
-		claimChecks:  nil,
 	}
 
 	// apply options set by user

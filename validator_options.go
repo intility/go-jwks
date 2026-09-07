@@ -15,7 +15,7 @@ type ValidatorOptions struct {
 	claimChecks []func(context.Context, jwt.Claims) error
 }
 
-// ValidatorOptionFunc is the struct that holds the functional options.
+// ValidatorOptionFunc configures ValidatorOptions and may return an error for invalid input.
 type ValidatorOptionFunc func(*ValidatorOptions) error
 
 // WithIssuers sets any number of allowed issuers.

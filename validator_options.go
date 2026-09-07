@@ -1,13 +1,21 @@
 package jwt
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+
+	jwt "github.com/golang-jwt/jwt/v5"
+)
 
 type ValidatorOptions struct {
 	issuers      []string
 	audiences    []string
 	validMethods []string
+	// optional user specified claim validators
+	claimChecks []func(context.Context, jwt.Claims) error
 }
 
+// ValidatorOptionFunc is the struct that holds the functional options.
 type ValidatorOptionFunc func(*ValidatorOptions) error
 
 // WithIssuers sets any number of allowed issuers.
@@ -45,6 +53,39 @@ func WithValidMethods(methods ...string) ValidatorOptionFunc {
 		}
 
 		o.validMethods = methods
+		return nil
+	}
+}
+
+// WithClaimValidator registers a type-safe check for claims that are not covered
+// by the standard issuer, audience and expiry validation.
+//
+// Multiple validators run in registration order and the first error fails validation.
+//
+// Example custom validator:
+//
+//	WithClaimValidator(func(_ context.Context, c *MyClaims) error {
+//		if c.Azp != expectedClientID {
+//			return fmt.Errorf("azp %q not allowed", c.Azp)
+//		}
+//		return nil
+//	})
+func WithClaimValidator[T jwt.Claims](fn func(ctx context.Context, claims T) error) ValidatorOptionFunc {
+	return func(o *ValidatorOptions) error {
+		if fn == nil {
+			return fmt.Errorf("WithClaimValidator requires a non-nil function")
+		}
+
+		// type is evaluated at runtime.
+		o.claimChecks = append(o.claimChecks, func(ctx context.Context, c jwt.Claims) error {
+			typed, ok := c.(T)
+			if !ok {
+				return fmt.Errorf("claim validator type mismatch: got %T", c)
+			}
+
+			return fn(ctx, typed)
+		})
+
 		return nil
 	}
 }

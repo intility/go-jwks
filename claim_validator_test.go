@@ -88,14 +88,14 @@ func requireAzp(allowed ...string) func(context.Context, *azpClaims) error {
 	}
 }
 
-func newAzpValidator(t *testing.T, fetcher *JWKSFetcher, options ...ValidatorOptionFunc) *JWTValidator[*azpClaims] {
+func newAzpValidator(t *testing.T, fetcher *JWKSFetcher, options ...ValidatorOption) *JWTValidator[*azpClaims] {
 	t.Helper()
 
 	v, err := NewJWTValidatorWithClaims(
 		fetcher,
 		claimTestAudience,
 		func() *azpClaims { return &azpClaims{} },
-		append([]ValidatorOptionFunc{WithIssuers(claimTestIssuer)}, options...)...,
+		append([]ValidatorOption{WithIssuers(claimTestIssuer)}, options...)...,
 	)
 	require.NoError(t, err)
 

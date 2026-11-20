@@ -828,7 +828,7 @@ func TestParseKeyEdgeCases(t *testing.T) {
 				Kid: testKid,
 				Kty: "EC",
 			},
-			expectedError: "EC not yet supported",
+			expectedError: "method not supported",
 		},
 		{
 			name: "unknown key type",

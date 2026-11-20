@@ -66,7 +66,7 @@ type JWTValidator[T jwt.Claims] struct {
 	claimChecks  []func(context.Context, jwt.Claims) error
 }
 
-// NewJWTValidator creates a new JWTValidator.
+// NewJWTValidator creates a new JWTValidator with default claims seen in claims.go.
 //
 // Sensible defaults are set to cater to most use cases:
 //   - Issuer: Extracted from the discovery document (works for single-tenant apps)
@@ -82,7 +82,7 @@ type JWTValidator[T jwt.Claims] struct {
 //   - WithAdditionalAudiences(audiences ...string) - Add more valid audiences
 //   - WithValidMethods(methods ...string) - Override the default signing methods
 //   - WithClaimValidator(fn) - Add a custom check for non-standard claims
-func (f *JWKSFetcher) NewJWTValidator(audience string, options ...ValidatorOptionFunc) (*JWTValidator[*UserClaims], error) {
+func (f *JWKSFetcher) NewJWTValidator(audience string, options ...ValidatorOption) (*JWTValidator[*UserClaims], error) {
 	return NewJWTValidatorWithClaims(f, audience, func() *UserClaims { return &UserClaims{} }, options...)
 }
 
@@ -95,10 +95,10 @@ func NewJWTValidatorWithClaims[T jwt.Claims](
 	fetcher *JWKSFetcher,
 	audience string,
 	newClaims func() T,
-	options ...ValidatorOptionFunc,
+	options ...ValidatorOption,
 ) (*JWTValidator[T], error) {
 	// set default validator options
-	opts := &ValidatorOptions{
+	opts := &ValidatorConfiguration{
 		// Issuer extracted from the discovery document.
 		issuers:      []string{fetcher.issuer},
 		validMethods: []string{jwt.SigningMethodRS256.Alg()},
@@ -119,7 +119,7 @@ func NewJWTValidatorWithClaims[T jwt.Claims](
 	}
 
 	if newClaims == nil {
-		return nil, fmt.Errorf("newClaims function is required")
+		return nil, fmt.Errorf("newClaims can not be nil. Set one explicitly when using the NewJWTValidatorWithClaims function.")
 	}
 
 	v := &JWTValidator[T]{
@@ -173,48 +173,49 @@ func JWTMiddleware[T jwt.Claims](validator *JWTValidator[T]) func(http.Handler) 
 	}
 }
 
-// Parse JWK. Attempt both RSA and EC parsing. Return the constructed public key.
+// parseKey parses a JWK and returns the constructed rsa.PublicKey.
+// Currently only supports RSA.
 func parseKey(jwk *JSONWebKey) (interface{}, error) {
 	switch jwk.Kty {
 	case keyTypeRSA:
-		if jwk.N != "" && jwk.E != "" {
-			// Construct public key from RSA params.
-			nBytes, err := base64.RawURLEncoding.DecodeString(jwk.N)
-			if err != nil {
-				return nil, fmt.Errorf("failed to decode RSA modulus 'n': %w", err)
-			}
-			n := new(big.Int).SetBytes(nBytes)
-			eBytes, err := base64.RawURLEncoding.DecodeString(jwk.E)
-			if err != nil {
-				return nil, fmt.Errorf("failed to decode RSA modulus 'e': %w", err)
-			}
-
-			e := new(big.Int).SetBytes(eBytes)
-			if n.BitLen() == 0 || e.BitLen() == 0 {
-				return nil, fmt.Errorf("RSA modulus or exponent resulted in zero value")
-			}
-
-			// Check if e is to big for convert
-			if !e.IsInt64() {
-				return nil, fmt.Errorf("RSA exponent 'e' is too big to fit in an int")
-			}
-
-			return &rsa.PublicKey{N: n, E: int(e.Int64())}, nil
-		} else {
+		if jwk.N == "" || jwk.E == "" {
 			return nil, fmt.Errorf("missing N and/or E param")
 		}
-	case "EC":
-		// TODO: add EC support
-		// Extract eclipse params and construct public key
-		return nil, fmt.Errorf("EC not yet supported")
+
+		// Extract and convert n to big.Int.
+		nBytes, err := base64.RawURLEncoding.DecodeString(jwk.N)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode RSA modulus 'n': %w", err)
+		}
+
+		n := new(big.Int).SetBytes(nBytes)
+
+		// Extract and convert e to big.Int.
+		eBytes, err := base64.RawURLEncoding.DecodeString(jwk.E)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode RSA modulus 'e': %w", err)
+		}
+
+		e := new(big.Int).SetBytes(eBytes)
+		if n.BitLen() == 0 || e.BitLen() == 0 {
+			return nil, fmt.Errorf("RSA modulus or exponent resulted in zero value")
+		}
+
+		// Check if e is to big for convert
+		if !e.IsInt64() {
+			return nil, fmt.Errorf("RSA exponent 'e' is too big to fit in an int")
+		}
+
+		return &rsa.PublicKey{N: n, E: int(e.Int64())}, nil
+
 	default:
 		return nil, fmt.Errorf("method not supported: %s", jwk.Kty)
 	}
 }
 
 // createKeyFunc returns a key lookup function for a given validator.
-// A key lookup function accepts a parsed JWT token and returns the corresponding public key
-// that was used to sign it, if any is found.
+// A key lookup function accepts a parsed JWT token and returns the corresponding
+// public key that was used to sign it, if any is found.
 // Also validates that the key is not an encryption key.
 func (v *JWTValidator[T]) createKeyFunc() jwt.Keyfunc {
 	return func(token *jwt.Token) (interface{}, error) {
@@ -235,7 +236,7 @@ func (v *JWTValidator[T]) createKeyFunc() jwt.Keyfunc {
 		// If match, parse and return corresponding public key.
 		for _, key := range v.JWKSFetcher.jwks.Keys {
 			if key.Kid == kid {
-				// Validate key usage - only allow keys with use:"sig" or no use specified
+				// Validate key usage is "sig" or no use specified
 				// Reject keys explicitly marked for encryption only (use:"enc")
 				if key.Use != "" && key.Use != keyUseSig {
 					v.logger.Error("key usage validation failed", "kid", kid, "use", key.Use)
@@ -247,21 +248,25 @@ func (v *JWTValidator[T]) createKeyFunc() jwt.Keyfunc {
 					v.logger.Error("failed to parse public key from JWK", "error", err)
 					return nil, fmt.Errorf("failed to parse key for kid %s: %w", kid, err)
 				}
+
 				if pubkey == nil {
 					return nil, fmt.Errorf("key found for kid %s, but parsing resulted in nil key", key)
 				}
+
 				return pubkey, nil
 			}
 		}
+
 		return nil, fmt.Errorf("signing key not found")
 	}
 }
 
-// ValidateJWT uses a JWTValidator to validate any standalone JWT.
+// ValidateJWT validates any standalone JWT.
 // Accepts a JWT string and returns any claims specified in the custom claims type.
-// Returns claims even if there is an error parsing.
+// Warning: Returns claims even if there is an error parsing.
 func (v *JWTValidator[T]) ValidateJWT(ctx context.Context, tokenStr string) (T, error) {
 	claims := v.newClaims()
+
 	// Parse and validate token.
 	token, err := jwt.ParseWithClaims(tokenStr, claims, v.keyFunc,
 		jwt.WithValidMethods(v.validMethods),

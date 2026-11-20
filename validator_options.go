@@ -7,7 +7,9 @@ import (
 	jwt "github.com/golang-jwt/jwt/v5"
 )
 
-type ValidatorOptions struct {
+// ValidatorConfiguration holds required validator configuration and optional claims checks
+// to be carried out by the validator.
+type ValidatorConfiguration struct {
 	issuers      []string
 	audiences    []string
 	validMethods []string
@@ -15,14 +17,14 @@ type ValidatorOptions struct {
 	claimChecks []func(context.Context, jwt.Claims) error
 }
 
-// ValidatorOptionFunc configures ValidatorOptions and may return an error for invalid input.
-type ValidatorOptionFunc func(*ValidatorOptions) error
+// ValidatorOption modify the default validator configuration and may return an error for invalid input.
+type ValidatorOption func(*ValidatorConfiguration) error
 
 // WithIssuers sets any number of allowed issuers.
 // Must be used for multi-tenant applications.
 // Default is inferred from fetched discovery document.
-func WithIssuers(issuers ...string) ValidatorOptionFunc {
-	return func(o *ValidatorOptions) error {
+func WithIssuers(issuers ...string) ValidatorOption {
+	return func(o *ValidatorConfiguration) error {
 		if len(issuers) == 0 {
 			return fmt.Errorf("WithIssuers requires at least one issuer")
 		}
@@ -33,8 +35,8 @@ func WithIssuers(issuers ...string) ValidatorOptionFunc {
 }
 
 // WithAdditionalAudiences appends additional allowed audiences to the required audience.
-func WithAdditionalAudiences(audiences ...string) ValidatorOptionFunc {
-	return func(o *ValidatorOptions) error {
+func WithAdditionalAudiences(audiences ...string) ValidatorOption {
+	return func(o *ValidatorConfiguration) error {
 		if len(audiences) == 0 {
 			return fmt.Errorf("WithAdditionalAudiences requires at least one audience")
 		}
@@ -46,8 +48,8 @@ func WithAdditionalAudiences(audiences ...string) ValidatorOptionFunc {
 
 // WithValidMethods sets all allowed signing methods.
 // Default is RS256.
-func WithValidMethods(methods ...string) ValidatorOptionFunc {
-	return func(o *ValidatorOptions) error {
+func WithValidMethods(methods ...string) ValidatorOption {
+	return func(o *ValidatorConfiguration) error {
 		if len(methods) == 0 {
 			return fmt.Errorf("WithValidMethods requires at least one method")
 		}
@@ -70,13 +72,14 @@ func WithValidMethods(methods ...string) ValidatorOptionFunc {
 //		}
 //		return nil
 //	})
-func WithClaimValidator[T jwt.Claims](fn func(ctx context.Context, claims T) error) ValidatorOptionFunc {
-	return func(o *ValidatorOptions) error {
+//
+// Warning: claim type is evaluated at runtime.
+func WithClaimValidator[T jwt.Claims](fn func(ctx context.Context, claims T) error) ValidatorOption {
+	return func(o *ValidatorConfiguration) error {
 		if fn == nil {
 			return fmt.Errorf("WithClaimValidator requires a non-nil function")
 		}
 
-		// type is evaluated at runtime.
 		o.claimChecks = append(o.claimChecks, func(ctx context.Context, c jwt.Claims) error {
 			typed, ok := c.(T)
 			if !ok {

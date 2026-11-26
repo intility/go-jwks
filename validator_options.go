@@ -17,8 +17,18 @@ type ValidatorConfiguration struct {
 	claimChecks []func(context.Context, jwt.Claims) error
 }
 
-// ValidatorOption modify the default validator configuration and may return an error for invalid input.
+// ValidatorOption modifies the default validator configuration and may return an error for invalid input.
 type ValidatorOption func(*ValidatorConfiguration) error
+
+// ValidatorOptions is the previous name of ValidatorConfiguration.
+//
+// Deprecated: Use ValidatorConfiguration instead.
+type ValidatorOptions = ValidatorConfiguration
+
+// ValidatorOptionFunc is the previous name of ValidatorOption.
+//
+// Deprecated: Use ValidatorOption instead.
+type ValidatorOptionFunc = ValidatorOption
 
 // WithIssuers sets any number of allowed issuers.
 // Must be used for multi-tenant applications.

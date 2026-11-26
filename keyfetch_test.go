@@ -615,7 +615,7 @@ func TestMalformedJWKSResponses(t *testing.T) {
 		{
 			name:          "invalid base64 in e parameter",
 			jwksResponse:  `{"keys": [{"kid": "test", "kty": "RSA", "n": "AQAB", "e": "!!!invalid-base64!!!", "use": "sig"}]}`,
-			expectedError: "", // JWKS fetch succeeds; parseKey will fail with "failed to decode RSA modulus 'e'"
+			expectedError: "", // JWKS fetch succeeds; parseKey will fail with "failed to decode RSA exponent 'e'"
 		},
 		// Cryptographic edge cases
 		{
@@ -632,7 +632,7 @@ func TestMalformedJWKSResponses(t *testing.T) {
 		{
 			name:          "unsupported key type",
 			jwksResponse:  `{"keys": [{"kid": "test", "kty": "EC", "crv": "P-256", "x": "test", "y": "test"}]}`,
-			expectedError: "", // JWKS fetch succeeds; parseKey will fail with "EC not yet supported"
+			expectedError: "", // JWKS fetch succeeds; parseKey will fail with "method not supported: EC"
 		},
 	}
 
@@ -789,7 +789,7 @@ func TestParseKeyEdgeCases(t *testing.T) {
 				N:   testExponent,
 				E:   "!!!invalid!!!",
 			},
-			expectedError: "failed to decode RSA modulus 'e'",
+			expectedError: "failed to decode RSA exponent 'e'",
 		},
 		{
 			name: "zero value modulus",

@@ -119,7 +119,7 @@ func NewJWTValidatorWithClaims[T jwt.Claims](
 	}
 
 	if newClaims == nil {
-		return nil, fmt.Errorf("newClaims can not be nil. Set one explicitly when using the NewJWTValidatorWithClaims function.")
+		return nil, fmt.Errorf("newClaims function is required")
 	}
 
 	v := &JWTValidator[T]{
@@ -193,7 +193,7 @@ func parseKey(jwk *JSONWebKey) (interface{}, error) {
 		// Extract and convert e to big.Int.
 		eBytes, err := base64.RawURLEncoding.DecodeString(jwk.E)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode RSA modulus 'e': %w", err)
+			return nil, fmt.Errorf("failed to decode RSA exponent 'e': %w", err)
 		}
 
 		e := new(big.Int).SetBytes(eBytes)
@@ -201,7 +201,7 @@ func parseKey(jwk *JSONWebKey) (interface{}, error) {
 			return nil, fmt.Errorf("RSA modulus or exponent resulted in zero value")
 		}
 
-		// Check if e is to big for convert
+		// Check that e fits in an int.
 		if !e.IsInt64() {
 			return nil, fmt.Errorf("RSA exponent 'e' is too big to fit in an int")
 		}
@@ -250,7 +250,7 @@ func (v *JWTValidator[T]) createKeyFunc() jwt.Keyfunc {
 				}
 
 				if pubkey == nil {
-					return nil, fmt.Errorf("key found for kid %s, but parsing resulted in nil key", key)
+					return nil, fmt.Errorf("key found for kid %s, but parsing resulted in nil key", kid)
 				}
 
 				return pubkey, nil
